@@ -12,6 +12,7 @@ export async function GET() {
       ok: true,
       service: "deisy-jobs",
       applications: count,
+      magic_link: Boolean(process.env.RESEND_API_KEY),
       ts: new Date().toISOString(),
     });
   } catch (err) {

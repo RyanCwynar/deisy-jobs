@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import type { ApplicationRow, NoteRow } from "@/lib/db";
 import { statusLabel, t, type Lang } from "@/lib/i18n";
@@ -104,9 +105,9 @@ export function ApplicationCard({
             {isDone ? t(lang, "undoDone") : t(lang, "markDone")}
           </button>
         ) : null}
-        <a href={`/applications/${app.id}`} className="btn ghost">
+        <Link href={`/applications/${app.id}`} className="btn ghost">
           {t(lang, "detail")}
-        </a>
+        </Link>
       </div>
 
       {(pinned || app.status === "Needs-Deisy") && (

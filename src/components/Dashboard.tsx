@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ApplicationRow, NoteRow } from "@/lib/db";
 import { t, type Lang } from "@/lib/i18n";
 import { ApplicationCard } from "./ApplicationCard";
@@ -25,6 +25,7 @@ export function Dashboard({ initial, userName }: Props) {
     to: "",
     cv: "",
   });
+  const loadGen = useRef(0);
 
   useEffect(() => {
     const saved = localStorage.getItem("deisy-jobs-lang");
@@ -36,7 +37,12 @@ export function Dashboard({ initial, userName }: Props) {
     localStorage.setItem("deisy-jobs-lang", l);
   }
 
+  const filtersActive = Boolean(
+    filters.status || filters.company || filters.from || filters.to || filters.cv
+  );
+
   const load = useCallback(async () => {
+    const gen = ++loadGen.current;
     setLoading(true);
     setError(null);
     try {
@@ -49,15 +55,16 @@ export function Dashboard({ initial, userName }: Props) {
       const res = await fetch(`/api/applications?${q.toString()}`);
       if (!res.ok) throw new Error("fail");
       const data = await res.json();
-      setApps(data.applications as ApplicationRow[]);
+      if (gen !== loadGen.current) return;
+      const list = data.applications as ApplicationRow[];
+      setApps(list);
+      setLoading(false);
 
-      // Prefetch notes for Needs-Deisy cards
-      const needs = (data.applications as ApplicationRow[]).filter(
-        (a) => a.status === "Needs-Deisy" && !a.done_at
-      );
+      // Prefetch notes for open Needs-Deisy cards (non-blocking)
+      const needs = list.filter((a) => a.status === "Needs-Deisy" && !a.done_at);
       const map: Record<string, NoteRow[]> = {};
       await Promise.all(
-        needs.slice(0, 30).map(async (a) => {
+        needs.slice(0, 20).map(async (a) => {
           const r = await fetch(`/api/applications/${a.id}`);
           if (r.ok) {
             const d = await r.json();
@@ -65,22 +72,26 @@ export function Dashboard({ initial, userName }: Props) {
           }
         })
       );
+      if (gen !== loadGen.current) return;
       setNotesById(map);
     } catch {
-      setError(t(lang, "error"));
-    } finally {
+      if (gen !== loadGen.current) return;
+      setError("error");
       setLoading(false);
     }
-  }, [filters, lang]);
+  }, [filters]);
 
   useEffect(() => {
     const tmr = setTimeout(() => {
       void load();
-    }, 200);
+    }, 250);
     return () => clearTimeout(tmr);
   }, [load]);
 
   const { pinned, rest } = useMemo(() => {
+    if (filtersActive) {
+      return { pinned: [] as ApplicationRow[], rest: apps };
+    }
     const pinnedList = apps.filter(
       (a) => a.status === "Needs-Deisy" && !a.done_at
     );
@@ -88,7 +99,7 @@ export function Dashboard({ initial, userName }: Props) {
       (a) => !(a.status === "Needs-Deisy" && !a.done_at)
     );
     return { pinned: pinnedList, rest: restList };
-  }, [apps]);
+  }, [apps, filtersActive]);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -100,7 +111,9 @@ export function Dashboard({ initial, userName }: Props) {
       <header className="topbar">
         <div>
           <p className="brand">{t(lang, "appName")}</p>
-          <p className="user">{userName}</p>
+          <p className="user">
+            {userName} · {lang.toUpperCase()}
+          </p>
         </div>
         <div className="top-actions">
           <LangToggle lang={lang} onChange={changeLang} />
@@ -113,11 +126,14 @@ export function Dashboard({ initial, userName }: Props) {
       <Filters lang={lang} value={filters} onChange={setFilters} />
 
       {loading ? <p className="muted">{t(lang, "loading")}</p> : null}
-      {error ? <p className="error">{error}</p> : null}
+      {error ? <p className="error">{t(lang, "error")}</p> : null}
 
-      {pinned.length > 0 && (
+      {!filtersActive && pinned.length > 0 && (
         <section className="section">
-          <h1>{t(lang, "needsDeisy")}</h1>
+          <h1>
+            {t(lang, "needsDeisy")}{" "}
+            <span className="count">({pinned.length})</span>
+          </h1>
           <div className="card-list">
             {pinned.map((app) => (
               <ApplicationCard
@@ -135,21 +151,20 @@ export function Dashboard({ initial, userName }: Props) {
 
       <section className="section">
         <h1>
-          {filters.status || filters.company
-            ? t(lang, "filters")
-            : t(lang, "all")}{" "}
-          <span className="count">({rest.length})</span>
+          {filtersActive ? t(lang, "filters") : t(lang, "all")}{" "}
+          <span className="count">({filtersActive ? apps.length : rest.length})</span>
         </h1>
-        {rest.length === 0 && !loading ? (
+        {(filtersActive ? apps : rest).length === 0 && !loading ? (
           <p className="muted">{t(lang, "empty")}</p>
         ) : (
           <div className="card-list">
-            {rest.map((app) => (
+            {(filtersActive ? apps : rest).map((app) => (
               <ApplicationCard
                 key={app.id}
                 lang={lang}
                 app={app}
                 notes={notesById[app.id] ?? []}
+                pinned={app.status === "Needs-Deisy" && !app.done_at}
                 onUpdated={load}
               />
             ))}
