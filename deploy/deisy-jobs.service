@@ -1,0 +1,21 @@
+[Unit]
+Description=deisy-jobs (Next.js job tracker)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/deisy-jobs
+EnvironmentFile=/opt/deisy-jobs/.env
+Environment=NODE_ENV=production
+Environment=PORT=3010
+Environment=HOSTNAME=127.0.0.1
+ExecStart=/usr/bin/node /opt/deisy-jobs/server.js
+Restart=on-failure
+RestartSec=5
+# Persist libSQL file under WorkingDirectory/data
+ReadWritePaths=/opt/deisy-jobs/data
+
+[Install]
+WantedBy=multi-user.target

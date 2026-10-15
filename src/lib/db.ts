@@ -1,0 +1,137 @@
+import { createClient, type Client } from "@libsql/client";
+import path from "node:path";
+import fs from "node:fs";
+
+let client: Client | null = null;
+let schemaReady = false;
+
+function resolveDbUrl(): string {
+  const url = process.env.DATABASE_URL;
+  if (url) return url;
+  const file = path.join(process.cwd(), "data", "deisy-jobs.db");
+  return `file:${file}`;
+}
+
+export function getDb(): Client {
+  if (!client) {
+    const url = resolveDbUrl();
+    if (url.startsWith("file:")) {
+      const filePath = url.slice("file:".length);
+      const dir = path.dirname(filePath);
+      if (dir && dir !== ".") fs.mkdirSync(dir, { recursive: true });
+    }
+    client = createClient({ url });
+  }
+  return client;
+}
+
+/** Reset cached client (tests). */
+export function resetDb(): void {
+  if (client) {
+    try {
+      client.close();
+    } catch {
+      /* ignore */
+    }
+  }
+  client = null;
+  schemaReady = false;
+}
+
+export async function ensureSchema(db: Client = getDb()): Promise<Client> {
+  if (schemaReady && db === client) return db;
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS applications (
+      id TEXT PRIMARY KEY,
+      date_found TEXT,
+      company TEXT NOT NULL,
+      role TEXT NOT NULL,
+      location TEXT,
+      listed_pay TEXT,
+      cv TEXT,
+      apply_link TEXT,
+      status TEXT NOT NULL,
+      status_reason TEXT,
+      raw_status TEXT,
+      date_applied TEXT,
+      notes TEXT,
+      done_at TEXT,
+      updated_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      application_id TEXT NOT NULL,
+      author TEXT NOT NULL CHECK (author IN ('deisy', 'ryan', 'bot')),
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (application_id) REFERENCES applications(id)
+    )
+  `);
+
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status)`
+  );
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_applications_company ON applications(company)`
+  );
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_applications_updated ON applications(updated_at)`
+  );
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_notes_application ON notes(application_id)`
+  );
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_notes_created ON notes(created_at)`
+  );
+
+  if (db === client) schemaReady = true;
+  return db;
+}
+
+export type ApplicationRow = {
+  id: string;
+  date_found: string | null;
+  company: string;
+  role: string;
+  location: string | null;
+  listed_pay: string | null;
+  cv: string | null;
+  apply_link: string | null;
+  status: string;
+  status_reason: string | null;
+  raw_status: string | null;
+  date_applied: string | null;
+  notes: string | null;
+  done_at: string | null;
+  updated_at: string;
+  created_at: string;
+};
+
+export type NoteRow = {
+  id: number;
+  application_id: string;
+  author: "deisy" | "ryan" | "bot";
+  body: string;
+  created_at: string;
+};
+
+export type ApplicationInput = {
+  id: string;
+  date_found?: string | null;
+  company: string;
+  role: string;
+  location?: string | null;
+  listed_pay?: string | null;
+  cv?: string | null;
+  apply_link?: string | null;
+  status?: string | null;
+  raw_status?: string | null;
+  status_reason?: string | null;
+  date_applied?: string | null;
+  notes?: string | null;
+};

@@ -1,0 +1,389 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f3efe6;
+  --bg-2: #e8e0d2;
+  --ink: #1c1914;
+  --muted: #6b6458;
+  --card: #fffaf2;
+  --line: #d4caba;
+  --accent: #0f6b5c;
+  --accent-ink: #f5fffb;
+  --warn: #8a4b12;
+  --warn-bg: #f7e6d0;
+  --danger: #8b1e2d;
+  --pin: #1f4d6b;
+  --radius: 14px;
+  --shadow: 0 10px 30px rgba(28, 25, 20, 0.08);
+  --font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --font-body: "Source Sans 3", "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #f8f1e0 0%, transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, #dfece7 0%, transparent 50%),
+    var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+
+a {
+  color: inherit;
+}
+
+.shell {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1rem 1rem 4rem;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.brand {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-weight: 650;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.user {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.top-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.lang-toggle {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--card);
+}
+
+.lang-toggle button {
+  border: 0;
+  background: transparent;
+  padding: 0.35rem 0.7rem;
+  font: inherit;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.lang-toggle button.active {
+  background: var(--ink);
+  color: #fff;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+  margin-bottom: 1.25rem;
+  padding: 0.85rem;
+  background: color-mix(in srgb, var(--card) 88%, white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.filters label:nth-child(2) {
+  grid-column: 1 / -1;
+}
+
+.filters input,
+.filters select,
+.reply-box textarea,
+.login-form input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.55rem 0.65rem;
+  font: inherit;
+  background: #fff;
+  color: var(--ink);
+}
+
+.section h1 {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  margin: 0 0 0.75rem;
+}
+
+.count {
+  color: var(--muted);
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+.card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.app-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1rem;
+  box-shadow: var(--shadow);
+}
+
+.app-card.pinned {
+  border-color: color-mix(in srgb, var(--pin) 45%, var(--line));
+  background: linear-gradient(180deg, #f4f8fb 0%, var(--card) 55%);
+}
+
+.app-card.done {
+  opacity: 0.72;
+}
+
+.app-card header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.app-id {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.app-card h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.25;
+}
+
+.role {
+  margin: 0.25rem 0 0;
+  color: var(--ink);
+}
+
+.meta {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.reason,
+.notes-text {
+  margin: 0.55rem 0 0;
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--ink);
+}
+
+.badge.status-Needs-Deisy {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.badge.status-Submitted {
+  background: #dcefe8;
+  color: var(--accent);
+}
+
+.badge.status-Skipped,
+.badge.status-Closed {
+  background: #ece7df;
+  color: var(--muted);
+}
+
+.badge.cv {
+  background: #e7eef5;
+  color: var(--pin);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.85rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 0.45rem 0.85rem;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.btn.secondary {
+  background: var(--ink);
+  color: #fff;
+}
+
+.btn.ghost {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.reply-box {
+  margin-top: 0.85rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.note-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.note-list li {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.9rem;
+}
+
+.author {
+  font-weight: 700;
+  text-transform: capitalize;
+  margin-right: 0.35rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.error {
+  color: var(--danger);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.login-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+}
+
+.login-card {
+  width: min(100%, 420px);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius) + 4px);
+  padding: 1.5rem;
+  box-shadow: var(--shadow);
+}
+
+.login-card h1 {
+  font-family: var(--font-display);
+  margin: 0 0 0.25rem;
+  font-size: 1.8rem;
+}
+
+.login-card .lede {
+  margin: 0 0 1.25rem;
+  color: var(--muted);
+}
+
+.login-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.login-form label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.login-form .btn {
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+.detail-page .app-card {
+  box-shadow: none;
+}
+
+@media (min-width: 640px) {
+  .filters {
+    grid-template-columns: 1fr 1.4fr 1fr 1fr 0.8fr;
+  }
+
+  .filters label:nth-child(2) {
+    grid-column: auto;
+  }
+}

@@ -1,0 +1,111 @@
+export type Lang = "en" | "es";
+
+const dict = {
+  en: {
+    appName: "deisy-jobs",
+    login: "Log in",
+    logout: "Log out",
+    email: "Email",
+    password: "Password",
+    magicLink: "Send magic link",
+    magicSent: "Check your email",
+    needsDeisy: "Needs Deisy",
+    markDone: "Done",
+    undoDone: "Undo",
+    reply: "Reply",
+    send: "Send",
+    filters: "Filters",
+    status: "Status",
+    company: "Company",
+    search: "Search company",
+    from: "From",
+    to: "To",
+    all: "All",
+    apply: "Apply",
+    role: "Role",
+    location: "Location",
+    pay: "Pay",
+    cv: "CV",
+    found: "Found",
+    applied: "Applied",
+    notes: "Notes",
+    empty: "No applications",
+    loading: "Loading…",
+    error: "Something went wrong",
+    openLink: "Open",
+    reason: "Why",
+    detail: "Detail",
+    author: "Author",
+    parked: "Parked",
+    skipped: "Skipped",
+    submitted: "Submitted",
+    closed: "Closed",
+    foundStatus: "Found",
+  },
+  es: {
+    appName: "deisy-jobs",
+    login: "Entrar",
+    logout: "Salir",
+    email: "Correo",
+    password: "Clave",
+    magicLink: "Enlace mágico",
+    magicSent: "Revisa tu correo",
+    needsDeisy: "Needs Deisy",
+    markDone: "Listo",
+    undoDone: "Deshacer",
+    reply: "Responder",
+    send: "Enviar",
+    filters: "Filtros",
+    status: "Estado",
+    company: "Empresa",
+    search: "Buscar empresa",
+    from: "Desde",
+    to: "Hasta",
+    all: "Todos",
+    apply: "Aplicar",
+    role: "Rol",
+    location: "Ubicación",
+    pay: "Pago",
+    cv: "CV",
+    found: "Hallado",
+    applied: "Aplicado",
+    notes: "Notas",
+    empty: "Sin aplicaciones",
+    loading: "Cargando…",
+    error: "Algo falló",
+    openLink: "Abrir",
+    reason: "Motivo",
+    detail: "Detalle",
+    author: "Autor",
+    parked: "Parked",
+    skipped: "Skipped",
+    submitted: "Submitted",
+    closed: "Closed",
+    foundStatus: "Found",
+  },
+} as const;
+
+export type DictKey = keyof (typeof dict)["en"];
+
+export function t(lang: Lang, key: DictKey): string {
+  return dict[lang][key] ?? dict.en[key];
+}
+
+export function statusLabel(lang: Lang, status: string): string {
+  switch (status) {
+    case "Needs-Deisy":
+      return t(lang, "needsDeisy");
+    case "Parked":
+      return t(lang, "parked");
+    case "Skipped":
+      return t(lang, "skipped");
+    case "Submitted":
+      return t(lang, "submitted");
+    case "Closed":
+      return t(lang, "closed");
+    case "Found":
+      return t(lang, "foundStatus");
+    default:
+      return status;
+  }
+}
