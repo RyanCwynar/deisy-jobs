@@ -151,8 +151,9 @@ export function TokensAdmin() {
         <h1>Mint token</h1>
         <p className="muted">
           Plaintext is shown once. Scopes: <code>read</code>, <code>notes</code>{" "}
-          (notes+done), <code>ingest</code>. Scoped bot tokens without{" "}
-          <code>ingest</code> cannot upsert.
+          (notes+done), <code>write</code> (MCP upsert/status/resume),{" "}
+          <code>ingest</code>. Scoped bot tokens without <code>ingest</code>{" "}
+          cannot REST-upsert.
         </p>
         <form className="token-form" onSubmit={onMint}>
           <label>

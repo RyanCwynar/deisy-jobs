@@ -115,15 +115,205 @@ export async function upsertApplication(
 export async function upsertMany(
   db: Client,
   items: ApplicationInput[]
-): Promise<{ created: number; updated: number }> {
+): Promise<{ created: number; updated: number; results: Array<{ id: string; created: boolean }> }> {
   let created = 0;
   let updated = 0;
+  const results: Array<{ id: string; created: boolean }> = [];
   for (const item of items) {
     const r = await upsertApplication(db, item);
+    results.push(r);
     if (r.created) created += 1;
     else updated += 1;
   }
-  return { created, updated };
+  return { created, updated, results };
+}
+
+export type ApplicationPatch = {
+  id?: string | number | null;
+  date_found?: string | null;
+  company?: string | null;
+  role?: string | null;
+  location?: string | null;
+  listed_pay?: string | null;
+  cv?: string | null;
+  apply_link?: string | null;
+  status?: string | null;
+  raw_status?: string | null;
+  status_reason?: string | null;
+  date_applied?: string | null;
+  notes?: string | null;
+};
+
+async function nextApplicationId(db: Client): Promise<string> {
+  const result = await db.execute(`SELECT id FROM applications`);
+  let max = 0;
+  for (const row of result.rows) {
+    const n = Number.parseInt(String(row.id), 10);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  return normalizeId(String(max + 1));
+}
+
+function appSnapshot(app: ApplicationRow): Record<string, unknown> {
+  return {
+    id: app.id,
+    date_found: app.date_found,
+    company: app.company,
+    role: app.role,
+    location: app.location,
+    listed_pay: app.listed_pay,
+    cv: app.cv,
+    apply_link: app.apply_link,
+    status: app.status,
+    status_reason: app.status_reason,
+    raw_status: app.raw_status,
+    date_applied: app.date_applied,
+    notes: app.notes,
+    done_at: app.done_at,
+  };
+}
+
+/**
+ * Create with auto id when id is missing; otherwise patch only provided fields.
+ * No deletes — close via status.
+ */
+export async function patchOrCreateApplication(
+  db: Client,
+  input: ApplicationPatch
+): Promise<{
+  application: ApplicationRow;
+  created: boolean;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown>;
+}> {
+  await ensureSchema(db);
+  const hasId = input.id !== undefined && input.id !== null && String(input.id).trim() !== "";
+  const id = hasId ? normalizeId(input.id!) : await nextApplicationId(db);
+  const existing = await getApplication(db, id);
+
+  if (!existing) {
+    const company = String(input.company ?? "").trim();
+    const role = String(input.role ?? "").trim();
+    if (!company || !role) {
+      throw new Error("company and role are required when creating an application");
+    }
+    const parsed =
+      input.status !== undefined || input.raw_status !== undefined
+        ? normalizeStatus(input.raw_status ?? input.status)
+        : null;
+    const status = parsed?.status ?? input.status ?? "Found";
+    const status_reason =
+      input.status_reason !== undefined
+        ? input.status_reason
+        : (parsed?.status_reason ?? null);
+    const raw_status =
+      input.raw_status ?? parsed?.raw_status ?? input.status ?? "";
+    const created = await upsertApplication(db, {
+      id,
+      company,
+      role,
+      date_found: input.date_found,
+      location: input.location,
+      listed_pay: input.listed_pay,
+      cv: input.cv,
+      apply_link: input.apply_link,
+      status,
+      raw_status,
+      status_reason,
+      date_applied: input.date_applied,
+      notes: input.notes,
+    });
+    const application = await getApplication(db, created.id);
+    if (!application) throw new Error("Failed to create application");
+    const after = appSnapshot(application);
+    return { application, created: true, before: null, after };
+  }
+
+  const before = appSnapshot(existing);
+  const sets: string[] = [];
+  const args: (string | number | null)[] = [];
+
+  const setField = (col: string, value: string | null) => {
+    sets.push(`${col} = ?`);
+    args.push(value);
+  };
+
+  if (input.date_found !== undefined) setField("date_found", input.date_found);
+  if (input.company !== undefined) {
+    const company = String(input.company ?? "").trim();
+    if (!company) throw new Error("company cannot be empty");
+    setField("company", company);
+  }
+  if (input.role !== undefined) {
+    const role = String(input.role ?? "").trim();
+    if (!role) throw new Error("role cannot be empty");
+    setField("role", role);
+  }
+  if (input.location !== undefined) setField("location", input.location);
+  if (input.listed_pay !== undefined) setField("listed_pay", input.listed_pay);
+  if (input.cv !== undefined) setField("cv", normalizeCv(input.cv));
+  if (input.apply_link !== undefined) setField("apply_link", input.apply_link);
+  if (input.date_applied !== undefined) setField("date_applied", input.date_applied);
+  if (input.notes !== undefined) setField("notes", input.notes);
+
+  if (
+    input.status !== undefined ||
+    input.raw_status !== undefined ||
+    input.status_reason !== undefined
+  ) {
+    const parsed =
+      input.status !== undefined || input.raw_status !== undefined
+        ? normalizeStatus(input.raw_status ?? input.status)
+        : null;
+    if (input.status !== undefined || input.raw_status !== undefined) {
+      setField("status", parsed?.status ?? String(input.status ?? existing.status));
+      setField(
+        "raw_status",
+        input.raw_status ?? parsed?.raw_status ?? input.status ?? existing.raw_status
+      );
+    }
+    if (input.status_reason !== undefined) {
+      setField("status_reason", input.status_reason);
+    } else if (parsed && input.status !== undefined) {
+      setField("status_reason", parsed.status_reason);
+    }
+  }
+
+  if (sets.length === 0) {
+    return { application: existing, created: false, before, after: before };
+  }
+
+  const updated_at = nowIso();
+  sets.push(`updated_at = ?`);
+  args.push(updated_at);
+  args.push(id);
+  await db.execute({
+    sql: `UPDATE applications SET ${sets.join(", ")} WHERE id = ?`,
+    args,
+  });
+  const application = await getApplication(db, id);
+  if (!application) throw new Error("Failed to update application");
+  const after = appSnapshot(application);
+  return { application, created: false, before, after };
+}
+
+export async function updateApplicationStatus(
+  db: Client,
+  id: string,
+  status: string
+): Promise<{
+  application: ApplicationRow;
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+}> {
+  const existing = await getApplication(db, id);
+  if (!existing) throw new Error("Not found");
+  const result = await patchOrCreateApplication(db, { id, status });
+  return {
+    application: result.application,
+    before: result.before ?? appSnapshot(existing),
+    after: result.after,
+  };
 }
 
 export type ListFilters = {

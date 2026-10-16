@@ -93,6 +93,23 @@ export async function mintToken(
   };
 }
 
+export async function setTokenScopes(
+  db: Client,
+  id: string,
+  scopesRaw: ApiScope[] | string
+): Promise<ApiTokenRow | null> {
+  await ensureSchema(db);
+  const existing = await getTokenById(db, id);
+  if (!existing) return null;
+  const scopes = parseScopes(scopesRaw);
+  if (scopes.length === 0) throw new Error("At least one valid scope is required");
+  await db.execute({
+    sql: `UPDATE api_tokens SET scopes = ? WHERE id = ?`,
+    args: [scopesToString(scopes), id],
+  });
+  return { ...existing, scopes };
+}
+
 export async function revokeToken(
   db: Client,
   id: string

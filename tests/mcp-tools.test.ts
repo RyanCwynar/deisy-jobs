@@ -70,7 +70,12 @@ describe("MCP tool handlers", () => {
       status: "Submitted",
     });
 
-    const bot = { scopes: ["read", "notes"] as const, author: "deisy-bot" };
+    const bot = {
+      scopes: ["read", "notes"] as const,
+      author: "deisy-bot",
+      actor: "deisy-bot",
+      token_id: "tok-1",
+    };
     const listed = parseText(
       await toolListApplications(db, bot, { company: "Hex" })
     );
@@ -91,7 +96,12 @@ describe("MCP tool handlers", () => {
     const done = parseText(await toolMarkDone(db, bot, { id: "11" }));
     expect(done.application.done_at).toBeTruthy();
 
-    const readOnly = { scopes: ["read"] as const, author: "reader" };
+    const readOnly = {
+      scopes: ["read"] as const,
+      author: "reader",
+      actor: "reader",
+      token_id: null,
+    };
     const denied = await toolAddNote(db, readOnly, {
       id: "11",
       body: "nope",
@@ -188,6 +198,10 @@ describe("MCP tool handlers", () => {
         "add_note",
         "list_resumes",
         "get_resume",
+        "upsert_application",
+        "update_status",
+        "upload_resume",
+        "list_changes",
       ])
     );
 

@@ -1,4 +1,4 @@
-export const API_SCOPES = ["read", "notes", "ingest"] as const;
+export const API_SCOPES = ["read", "notes", "ingest", "write"] as const;
 export type ApiScope = (typeof API_SCOPES)[number];
 
 export function parseScopes(raw: string | string[]): ApiScope[] {

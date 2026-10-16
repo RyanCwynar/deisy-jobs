@@ -7,11 +7,17 @@ import {
   toolGetApplication,
   toolGetResume,
   toolListApplications,
+  toolListChanges,
   toolListNeedsDeisy,
   toolListResumes,
   toolMarkDone,
+  toolUpdateStatus,
+  toolUploadResume,
+  toolUpsertApplication,
   type McpCaller,
 } from "./mcp-tools";
+
+const optionalNullableString = z.string().nullable().optional();
 
 export function createDeisyMcpServer(db: Client, caller: McpCaller): McpServer {
   const server = new McpServer({
@@ -108,6 +114,70 @@ export function createDeisyMcpServer(db: Client, caller: McpCaller): McpServer {
       },
     },
     async (args) => toolGetResume(db, caller, args)
+  );
+
+  server.registerTool(
+    "upsert_application",
+    {
+      description: MCP_TOOL_DESCRIPTIONS.upsert_application,
+      inputSchema: {
+        id: z
+          .union([z.string(), z.number()])
+          .optional()
+          .describe("ID opcional; sin id se genera / Optional id; auto when omitted"),
+        date_found: optionalNullableString,
+        company: optionalNullableString.describe("Requerido al crear / Required on create"),
+        role: optionalNullableString.describe("Requerido al crear / Required on create"),
+        location: optionalNullableString,
+        listed_pay: optionalNullableString,
+        cv: optionalNullableString,
+        apply_link: optionalNullableString,
+        status: optionalNullableString,
+        raw_status: optionalNullableString,
+        status_reason: optionalNullableString,
+        date_applied: optionalNullableString,
+        notes: optionalNullableString,
+      },
+    },
+    async (args) => toolUpsertApplication(db, caller, args)
+  );
+
+  server.registerTool(
+    "update_status",
+    {
+      description: MCP_TOOL_DESCRIPTIONS.update_status,
+      inputSchema: {
+        id: z.string().describe("ID de la solicitud / Application id"),
+        status: z.string().describe("Nuevo estado / New status"),
+      },
+    },
+    async (args) => toolUpdateStatus(db, caller, args)
+  );
+
+  server.registerTool(
+    "upload_resume",
+    {
+      description: MCP_TOOL_DESCRIPTIONS.upload_resume,
+      inputSchema: {
+        lang: z.enum(["en", "es"]),
+        file_base64: z.string().describe("PDF en base64 / PDF as base64"),
+        filename: z.string().optional(),
+      },
+    },
+    async (args) => toolUploadResume(db, caller, args)
+  );
+
+  server.registerTool(
+    "list_changes",
+    {
+      description: MCP_TOOL_DESCRIPTIONS.list_changes,
+      inputSchema: {
+        since: z.string().optional().describe("ISO timestamp"),
+        actor: z.string().optional(),
+        limit: z.number().int().positive().max(500).optional(),
+      },
+    },
+    async (args) => toolListChanges(db, caller, args)
   );
 
   return server;

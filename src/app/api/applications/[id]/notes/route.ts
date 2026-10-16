@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireScopes } from "@/lib/auth";
 import { ensureSchema, getDb } from "@/lib/db";
 import { addNote, getApplication } from "@/lib/applications";
+import { actorFromPrincipal, recordChange } from "@/lib/changelog";
 
 export const dynamic = "force-dynamic";
 
@@ -51,5 +52,18 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   }
 
   const note = await addNote(db, id, author, parsed.data.body);
+  const audit = actorFromPrincipal(access.principal);
+  await recordChange(db, {
+    actor: audit.actor,
+    token_id: audit.token_id,
+    entity: "note",
+    entity_id: String(note.id),
+    action: "create",
+    diff: {
+      application_id: note.application_id,
+      author: note.author,
+      body: note.body,
+    },
+  });
   return NextResponse.json({ ok: true, note });
 }

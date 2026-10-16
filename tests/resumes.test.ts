@@ -229,7 +229,12 @@ describe("resume MCP tools", () => {
       data: minimalPdf("es-cv"),
     });
 
-    const caller = { scopes: ["read"] as const, author: "deisy-bot" };
+    const caller = {
+      scopes: ["read"] as const,
+      author: "deisy-bot",
+      actor: "deisy-bot",
+      token_id: "tok-1",
+    };
     const listed = await toolListResumes(db, caller);
     const listPayload = JSON.parse(
       String(
@@ -264,7 +269,7 @@ describe("resume MCP tools", () => {
 
     const denied = await toolGetResume(
       db,
-      { scopes: ["notes"], author: "x" },
+      { scopes: ["notes"], author: "x", actor: "x", token_id: null },
       { lang: "es" }
     );
     expect("isError" in denied && denied.isError).toBe(true);

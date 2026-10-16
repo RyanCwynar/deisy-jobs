@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireScopes } from "@/lib/auth";
+import { actorFromPrincipal, recordChange } from "@/lib/changelog";
 import { ensureSchema, getDb } from "@/lib/db";
 import {
   listResumes,
@@ -114,6 +115,20 @@ export async function POST(req: NextRequest) {
       filename: uploaded.filename,
       contentType: uploaded.contentType,
       data: uploaded.data,
+    });
+    const audit = actorFromPrincipal(access.principal);
+    await recordChange(db, {
+      actor: audit.actor,
+      token_id: audit.token_id,
+      entity: "resume",
+      entity_id: resume.id,
+      action: "create",
+      diff: {
+        lang: resume.lang,
+        filename: resume.filename,
+        size: resume.size,
+        sha256: resume.sha256,
+      },
     });
     return NextResponse.json({ ok: true, resume: resumePublicMeta(resume) });
   } catch (err) {

@@ -5,7 +5,18 @@ import {
   getNotes,
   listApplications,
   markDone,
+  patchOrCreateApplication,
+  updateApplicationStatus,
+  type ApplicationPatch,
 } from "./applications";
+import {
+  actorFromPrincipal,
+  diffFields,
+  listChanges,
+  recordChange,
+  type AuditActor,
+} from "./changelog";
+import type { AccessPrincipal } from "./auth";
 import {
   createSignedResumeUrl,
   getLatestResume,
@@ -13,13 +24,24 @@ import {
   parseResumeLang,
   readResumeBytes,
   resumePublicMeta,
+  storeResume,
 } from "./resumes";
 import { hasScope, type ApiScope } from "./scopes";
 
-export type McpCaller = {
+export type McpCaller = AuditActor & {
   scopes: readonly ApiScope[] | readonly string[];
   author: string;
 };
+
+export function mcpCallerFromPrincipal(principal: AccessPrincipal): McpCaller {
+  const audit = actorFromPrincipal(principal);
+  return {
+    scopes: principal.scopes,
+    author: principal.author,
+    actor: audit.actor,
+    token_id: audit.token_id,
+  };
+}
 
 function textResult(data: unknown) {
   return {
@@ -89,8 +111,23 @@ export async function toolMarkDone(
 ) {
   const denied = requireCallerScope(caller, "notes");
   if (denied) return denied;
+  const before = await getApplication(db, args.id);
+  if (!before) return errorResult("Not found");
   const application = await markDone(db, args.id, args.done ?? true);
   if (!application) return errorResult("Not found");
+  await recordChange(db, {
+    actor: caller.actor,
+    token_id: caller.token_id,
+    entity: "application",
+    entity_id: application.id,
+    action: "update",
+    diff: {
+      fields: diffFields(
+        { done_at: before.done_at },
+        { done_at: application.done_at }
+      ),
+    },
+  });
   return textResult({ ok: true, application });
 }
 
@@ -104,6 +141,18 @@ export async function toolAddNote(
   const application = await getApplication(db, args.id);
   if (!application) return errorResult("Not found");
   const note = await addNote(db, args.id, caller.author, args.body);
+  await recordChange(db, {
+    actor: caller.actor,
+    token_id: caller.token_id,
+    entity: "note",
+    entity_id: String(note.id),
+    action: "create",
+    diff: {
+      application_id: note.application_id,
+      author: note.author,
+      body: note.body,
+    },
+  });
   return textResult({ ok: true, note });
 }
 
@@ -172,6 +221,115 @@ export async function toolGetResume(
   };
 }
 
+export async function toolUpsertApplication(
+  db: Client,
+  caller: McpCaller,
+  args: ApplicationPatch
+) {
+  const denied = requireCallerScope(caller, "write");
+  if (denied) return denied;
+  try {
+    const result = await patchOrCreateApplication(db, args);
+    const fields = diffFields(result.before, result.after);
+    await recordChange(db, {
+      actor: caller.actor,
+      token_id: caller.token_id,
+      entity: "application",
+      entity_id: result.application.id,
+      action: result.created ? "create" : "update",
+      diff: { fields },
+    });
+    return textResult({
+      ok: true,
+      created: result.created,
+      application: result.application,
+    });
+  } catch (err) {
+    return errorResult(err instanceof Error ? err.message : "Upsert failed");
+  }
+}
+
+export async function toolUpdateStatus(
+  db: Client,
+  caller: McpCaller,
+  args: { id: string; status: string }
+) {
+  const denied = requireCallerScope(caller, "write");
+  if (denied) return denied;
+  try {
+    const result = await updateApplicationStatus(db, args.id, args.status);
+    await recordChange(db, {
+      actor: caller.actor,
+      token_id: caller.token_id,
+      entity: "application",
+      entity_id: result.application.id,
+      action: "update",
+      diff: { fields: diffFields(result.before, result.after) },
+    });
+    return textResult({ ok: true, application: result.application });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Update failed";
+    return errorResult(message);
+  }
+}
+
+export async function toolUploadResume(
+  db: Client,
+  caller: McpCaller,
+  args: { lang: string; file_base64: string; filename?: string }
+) {
+  const denied = requireCallerScope(caller, "write");
+  if (denied) return denied;
+  const lang = parseResumeLang(args.lang);
+  if (!lang) return errorResult("lang must be en or es");
+  let data: Buffer;
+  try {
+    data = Buffer.from(args.file_base64, "base64");
+  } catch {
+    return errorResult("Invalid base64");
+  }
+  if (!data.length) return errorResult("Empty file");
+  try {
+    const resume = await storeResume(db, {
+      lang,
+      filename: args.filename || `resume-${lang}.pdf`,
+      contentType: "application/pdf",
+      data,
+    });
+    await recordChange(db, {
+      actor: caller.actor,
+      token_id: caller.token_id,
+      entity: "resume",
+      entity_id: resume.id,
+      action: "create",
+      diff: {
+        lang: resume.lang,
+        filename: resume.filename,
+        size: resume.size,
+        sha256: resume.sha256,
+      },
+    });
+    return textResult({ ok: true, resume: resumePublicMeta(resume) });
+  } catch (err) {
+    return errorResult(err instanceof Error ? err.message : "Upload failed");
+  }
+}
+
+export async function toolListChanges(
+  db: Client,
+  caller: McpCaller,
+  args: { since?: string; actor?: string; limit?: number }
+) {
+  const denied = requireCallerScope(caller, "read");
+  if (denied) return denied;
+  const changes = await listChanges(db, {
+    since: args.since,
+    actor: args.actor,
+    limit: args.limit,
+  });
+  return textResult({ changes, count: changes.length });
+}
+
 export const MCP_TOOL_DESCRIPTIONS = {
   list_applications:
     "Lista solicitudes de empleo con filtros opcionales (status, since, company). / List job applications with optional status, since, and company filters.",
@@ -187,4 +345,12 @@ export const MCP_TOOL_DESCRIPTIONS = {
     "Lista los CVs actuales (último por idioma) con lang, filename, size, updated_at y sha256. / List current resumes (latest per language) with lang, filename, size, updated_at, and sha256.",
   get_resume:
     "Obtiene el CV PDF actual de un idioma como recurso embebido (base64) más signed_url y expires_at. / Get the current resume PDF for a language as an embedded resource (base64) plus signed_url and expires_at.",
+  upsert_application:
+    "Crea o actualiza una solicitud (id opcional; sin id se asigna automáticamente; en update solo parchea campos dados). Requiere write. / Create or update an application (optional id; auto-id when missing; patch only given fields on update). Requires write.",
+  update_status:
+    "Actualiza solo el estado de una solicitud. Cerrar = status (no hay delete). Requiere write. / Update only an application status. Closing is via status (no delete). Requires write.",
+  upload_resume:
+    "Sube un CV PDF (base64) para en|es; queda como versión actual. Requiere write. / Upload a resume PDF (base64) for en|es; becomes the current version. Requires write.",
+  list_changes:
+    "Lista el change_log (since, actor, limit). Requiere read. / List the change_log (since, actor, limit). Requires read.",
 } as const;

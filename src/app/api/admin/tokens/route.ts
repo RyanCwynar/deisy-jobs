@@ -29,7 +29,7 @@ const mintSchema = z.object({
   name: z.string().min(1).max(64),
   scopes: z.union([
     z.string().min(1),
-    z.array(z.enum(["read", "notes", "ingest"])).min(1),
+    z.array(z.enum(["read", "notes", "ingest", "write"])).min(1),
   ]),
 });
 

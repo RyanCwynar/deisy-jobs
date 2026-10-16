@@ -46,6 +46,7 @@ Schema migrations (including `api_tokens`, `resumes`, and relaxing note authors)
 - **notes** — `id`, `application_id`, `author` (free-form string: `deisy` \| `ryan` \| `bot` \| token name e.g. `deisy-bot`), `body`, `created_at`.
 - **api_tokens** — `id`, `name`, `scopes`, `token_hash` (sha256 of plaintext), `created_at`, `revoked_at`, `last_used_at`.
 - **resumes** — versioned PDFs per `lang` (`en`\|`es`): `filename`, `content_type`, `size`, `sha256`, file under `RESUMES_DIR`, `created_at`. Latest per lang is current.
+- **change_log** — audit of creates/updates: `id`, `at`, `actor`, `token_id`, `entity`, `entity_id`, `action`, `diff` (JSON).
 
 Status free text is normalized to a prefix: `Skipped`, `Parked`, `Submitted`, `Needs-Deisy`, `Closed`, `Found`. `Needs Deisy` ≡ `Needs-Deisy`. `status_reason` is the text after `:` or inside `(...)`.
 
@@ -61,15 +62,18 @@ Bearer tokens (env or DB) use scopes:
 
 | Scope | Allows |
 |---|---|
-| `read` | List/get applications, updates, resumes, MCP read tools |
+| `read` | List/get applications, updates, resumes, changes, MCP read tools |
 | `notes` | Add notes + mark done (REST + MCP) |
-| `ingest` | Upsert applications + upload resumes |
+| `write` | MCP `upsert_application`, `update_status`, `upload_resume` |
+| `ingest` | REST upsert applications + REST upload resumes |
 
 - Env `READ_TOKEN` → `read,notes`
 - Env `INGEST_TOKEN` → `ingest,read,notes`
-- DB tokens: any subset. **Scoped bot tokens without `ingest` can never upsert.**
+- DB tokens: any subset. **Scoped bot tokens without `ingest` can never REST-upsert.**
 
 Send `Authorization: Bearer <token>` on MCP and REST routes.
+
+Audit `actor` is the token name (e.g. `deisy-bot`), `ingest` for the env ingest token, or the session user email.
 
 ## Remote MCP (streamable HTTP)
 
@@ -90,6 +94,10 @@ Send `Authorization: Bearer <token>` on MCP and REST routes.
 | `add_note` | `notes` | Author = token owner name (e.g. `deisy-bot`) |
 | `list_resumes` | `read` | Current resume per lang (filename, size, updated_at, sha256) |
 | `get_resume` | `read` | Embedded PDF (base64) + `signed_url` + `expires_at` |
+| `upsert_application` | `write` | Create (auto id if omitted) or patch given fields |
+| `update_status` | `write` | Status-only update (no delete; close via status) |
+| `upload_resume` | `write` | PDF base64 → current version for `en`\|`es` |
+| `list_changes` | `read` | Audit log (`since`, `actor`, `limit`) |
 
 Tool descriptions are bilingual (Spanish first, English after).
 
@@ -108,14 +116,16 @@ Tool descriptions are bilingual (Spanish first, English after).
 }
 ```
 
-## API tokens (mint / revoke)
+## API tokens (mint / revoke / scopes)
 
 Ryan-only UI: [/admin/tokens](https://deisy.byldr.co/admin/tokens) (linked from the dashboard when signed in as Ryan). Plaintext is shown once on mint.
 
-CLI (prints plaintext once):
+CLI:
 
 ```bash
-npm run token:mint -- --name deisy-bot --scopes read,notes
+npm run token:mint -- --name deisy-bot --scopes read,notes,write
+# Grant/replace scopes on an existing token (e.g. production deisy-bot):
+npm run token:scopes -- <REDACTED_TOKEN> read,notes,write
 npm run token:revoke -- --id <uuid>
 # or revoke all active tokens with a name:
 npm run token:revoke -- --name deisy-bot
@@ -137,6 +147,7 @@ All routes except `/api/health` require auth. `/mcp` requires a Bearer token.
 | `POST` | `/api/resumes` | Bearer `ingest` | Multipart `file`+`lang`, or raw PDF + `?lang=` (PDF ≤10MB) |
 | `GET` | `/api/resumes` | session or Bearer `read` | All resume versions (newest first) |
 | `GET` | `/api/resumes/:lang/download` | signed `sig`+`exp` (15m HMAC) | Current PDF for lang |
+| `GET` | `/api/changes` | session or Bearer `read` | Query: `since`, `actor`, `limit` |
 | `GET`/`POST`/`DELETE` | `/mcp` | Bearer | Remote MCP (streamable HTTP) |
 | `GET`/`POST` | `/api/admin/tokens` | Ryan session | List / mint |
 | `POST` | `/api/admin/tokens/:id/revoke` | Ryan session | Revoke |
@@ -267,4 +278,5 @@ Point DNS `jobs.byldr.co` A/AAAA at the host before issuing the cert.
 | `scripts/import.ts` | Idempotent CSV import |
 | `scripts/hash-password.ts` | Generate bcrypt hash for env |
 | `scripts/token-mint.ts` | Mint DB API token (plaintext once) |
+| `scripts/token-scopes.ts` | Set scopes on an existing token by id |
 | `scripts/token-revoke.ts` | Revoke by `--id` or `--name` |

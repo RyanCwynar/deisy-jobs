@@ -4,6 +4,7 @@ import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { getBearerToken, resolveAccess } from "@/lib/auth";
 import { ensureSchema, getDb } from "@/lib/db";
 import { createDeisyMcpServer } from "@/lib/mcp-server";
+import { mcpCallerFromPrincipal } from "@/lib/mcp-tools";
 import type { ApiScope } from "@/lib/scopes";
 
 export const dynamic = "force-dynamic";
@@ -38,10 +39,7 @@ async function handleMcp(req: NextRequest): Promise<Response> {
   };
 
   const db = await ensureSchema(getDb());
-  const server = createDeisyMcpServer(db, {
-    scopes,
-    author: access.author,
-  });
+  const server = createDeisyMcpServer(db, mcpCallerFromPrincipal(access));
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,

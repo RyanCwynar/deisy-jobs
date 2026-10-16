@@ -14,13 +14,13 @@ async function main() {
   const scopesRaw = arg("--scopes") ?? "read,notes";
   if (!name) {
     console.error(
-      "Usage: npm run token:mint -- --name deisy-bot --scopes read,notes"
+      "Usage: npm run token:mint -- --name deisy-bot --scopes read,notes,write"
     );
     process.exit(1);
   }
   const scopes = parseScopes(scopesRaw);
   if (scopes.length === 0) {
-    console.error("No valid scopes. Use: read, notes, ingest");
+    console.error("No valid scopes. Use: read, notes, ingest, write");
     process.exit(1);
   }
 

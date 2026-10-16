@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireScopes } from "@/lib/auth";
 import { ensureSchema, getDb } from "@/lib/db";
-import { upsertMany } from "@/lib/applications";
+import { getApplication, upsertApplication } from "@/lib/applications";
+import { actorFromPrincipal, diffFields, recordChange } from "@/lib/changelog";
 
 export const dynamic = "force-dynamic";
 
@@ -51,16 +52,61 @@ export async function POST(req: NextRequest) {
   }
 
   const db = await ensureSchema(getDb());
-  const items = parsed.data.applications.map((a) => ({
-    ...a,
-    id: String(a.id),
-  }));
-  const result = await upsertMany(db, items);
+  const audit = actorFromPrincipal(access.principal);
+  let created = 0;
+  let updated = 0;
+
+  for (const item of parsed.data.applications) {
+    const id = String(item.id);
+    const beforeRow = await getApplication(db, id);
+    const before = beforeRow
+      ? {
+          company: beforeRow.company,
+          role: beforeRow.role,
+          status: beforeRow.status,
+          status_reason: beforeRow.status_reason,
+          date_applied: beforeRow.date_applied,
+          notes: beforeRow.notes,
+          cv: beforeRow.cv,
+          location: beforeRow.location,
+          listed_pay: beforeRow.listed_pay,
+          apply_link: beforeRow.apply_link,
+          date_found: beforeRow.date_found,
+        }
+      : null;
+    const result = await upsertApplication(db, { ...item, id });
+    const afterRow = await getApplication(db, result.id);
+    const after = afterRow
+      ? {
+          company: afterRow.company,
+          role: afterRow.role,
+          status: afterRow.status,
+          status_reason: afterRow.status_reason,
+          date_applied: afterRow.date_applied,
+          notes: afterRow.notes,
+          cv: afterRow.cv,
+          location: afterRow.location,
+          listed_pay: afterRow.listed_pay,
+          apply_link: afterRow.apply_link,
+          date_found: afterRow.date_found,
+        }
+      : {};
+    await recordChange(db, {
+      actor: audit.actor,
+      token_id: audit.token_id,
+      entity: "application",
+      entity_id: result.id,
+      action: result.created ? "create" : "update",
+      diff: { fields: diffFields(before, after) },
+    });
+    if (result.created) created += 1;
+    else updated += 1;
+  }
 
   return NextResponse.json({
     ok: true,
-    created: result.created,
-    updated: result.updated,
-    total: result.created + result.updated,
+    created,
+    updated,
+    total: created + updated,
   });
 }
