@@ -186,6 +186,8 @@ describe("MCP tool handlers", () => {
         "list_needs_deisy",
         "mark_done",
         "add_note",
+        "list_resumes",
+        "get_resume",
       ])
     );
 

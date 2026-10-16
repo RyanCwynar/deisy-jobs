@@ -139,6 +139,22 @@ export async function ensureSchema(db: Client = getDb()): Promise<Client> {
     `CREATE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash)`
   );
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS resumes (
+      id TEXT PRIMARY KEY,
+      lang TEXT NOT NULL CHECK (lang IN ('en', 'es')),
+      filename TEXT NOT NULL,
+      content_type TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      sha256 TEXT NOT NULL,
+      storage_path TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_resumes_lang_created ON resumes(lang, created_at DESC)`
+  );
+
   if (db === client) schemaReady = true;
   return db;
 }

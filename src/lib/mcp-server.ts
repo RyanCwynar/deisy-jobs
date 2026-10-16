@@ -5,8 +5,10 @@ import {
   MCP_TOOL_DESCRIPTIONS,
   toolAddNote,
   toolGetApplication,
+  toolGetResume,
   toolListApplications,
   toolListNeedsDeisy,
+  toolListResumes,
   toolMarkDone,
   type McpCaller,
 } from "./mcp-tools";
@@ -84,6 +86,28 @@ export function createDeisyMcpServer(db: Client, caller: McpCaller): McpServer {
       },
     },
     async (args) => toolAddNote(db, caller, args)
+  );
+
+  server.registerTool(
+    "list_resumes",
+    {
+      description: MCP_TOOL_DESCRIPTIONS.list_resumes,
+      inputSchema: {},
+    },
+    async () => toolListResumes(db, caller)
+  );
+
+  server.registerTool(
+    "get_resume",
+    {
+      description: MCP_TOOL_DESCRIPTIONS.get_resume,
+      inputSchema: {
+        lang: z
+          .enum(["en", "es"])
+          .describe("Idioma del CV / Resume language (en or es)"),
+      },
+    },
+    async (args) => toolGetResume(db, caller, args)
   );
 
   return server;

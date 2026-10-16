@@ -37,6 +37,7 @@ yarn-error.log*
 # local databases
 /data/*.db
 /data/*.db-*
+/data/resumes/
 
 # vercel
 .vercel

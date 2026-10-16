@@ -12,8 +12,29 @@ type TokenView = {
   last_used_at: string | null;
 };
 
+type ResumeView = {
+  id: string;
+  lang: string;
+  filename: string;
+  size: number;
+  sha256: string;
+  created_at: string;
+};
+
+function currentByLang(resumes: ResumeView[]): ResumeView[] {
+  const seen = new Set<string>();
+  const out: ResumeView[] = [];
+  for (const r of resumes) {
+    if (seen.has(r.lang)) continue;
+    seen.add(r.lang);
+    out.push(r);
+  }
+  return out.sort((a, b) => a.lang.localeCompare(b.lang));
+}
+
 export function TokensAdmin() {
   const [tokens, setTokens] = useState<TokenView[]>([]);
+  const [resumes, setResumes] = useState<ResumeView[]>([]);
   const [name, setName] = useState("deisy-bot");
   const [scopes, setScopes] = useState("read,notes");
   const [plaintext, setPlaintext] = useState<string | null>(null);
@@ -21,18 +42,27 @@ export function TokensAdmin() {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/admin/tokens");
-    if (!res.ok) {
+    const [tokRes, resumeRes] = await Promise.all([
+      fetch("/api/admin/tokens"),
+      fetch("/api/resumes"),
+    ]);
+    if (!tokRes.ok) {
       setError("Could not load tokens");
       return;
     }
-    const data = await res.json();
+    const data = await tokRes.json();
     setTokens(data.tokens as TokenView[]);
+    if (resumeRes.ok) {
+      const rd = await resumeRes.json();
+      setResumes(rd.resumes as ResumeView[]);
+    }
   }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const currentResumes = currentByLang(resumes);
 
   async function onMint(e: FormEvent) {
     e.preventDefault();
@@ -82,7 +112,7 @@ export function TokensAdmin() {
       <header className="topbar">
         <div>
           <p className="brand">deisy-jobs</p>
-          <p className="user">API tokens · ryan only</p>
+          <p className="user">Admin · ryan only</p>
         </div>
         <div className="top-actions">
           <Link className="btn ghost" href="/">
@@ -90,6 +120,32 @@ export function TokensAdmin() {
           </Link>
         </div>
       </header>
+
+      <section className="section">
+        <h1>Current resumes</h1>
+        <p className="muted">
+          Latest PDF per language. Upload via{" "}
+          <code>POST /api/resumes</code> with ingest Bearer.
+        </p>
+        {currentResumes.length === 0 ? (
+          <p className="muted">No resumes uploaded yet.</p>
+        ) : (
+          <ul className="token-list">
+            {currentResumes.map((r) => (
+              <li key={r.id}>
+                <div>
+                  <strong>{r.lang.toUpperCase()}</strong>{" "}
+                  <span className="muted">{r.filename}</span>
+                  <div className="muted small">
+                    {(r.size / 1024).toFixed(1)} KB · sha256{" "}
+                    {r.sha256.slice(0, 12)}… · {r.created_at}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className="section">
         <h1>Mint token</h1>

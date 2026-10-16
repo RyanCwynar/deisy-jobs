@@ -35,14 +35,17 @@ Open [http://127.0.0.1:3010](http://127.0.0.1:3010) and sign in.
 | `RESEND_API_KEY` | no | Enables magic-link email |
 | `RESEND_FROM` | no | From address (default Resend onboarding) |
 | `PORT` | no | Default `3010` |
+| `RESUMES_DIR` | no | Resume PDF directory (default `./data/resumes`) |
+| `RESUME_URL_SECRET` | no | HMAC for signed resume URLs (falls back to `SESSION_SECRET`) |
 
-Schema migrations (including `api_tokens` and relaxing note authors) run automatically via `ensureSchema` on first DB use and on server start (`src/instrumentation.ts`).
+Schema migrations (including `api_tokens`, `resumes`, and relaxing note authors) run automatically via `ensureSchema` on first DB use and on server start (`src/instrumentation.ts`).
 
 ## Data model
 
 - **applications** — upsert key `#` (zero-padded). CSV fields plus `status`, `status_reason`, `raw_status`, `done_at`, `updated_at`.
 - **notes** — `id`, `application_id`, `author` (free-form string: `deisy` \| `ryan` \| `bot` \| token name e.g. `deisy-bot`), `body`, `created_at`.
 - **api_tokens** — `id`, `name`, `scopes`, `token_hash` (sha256 of plaintext), `created_at`, `revoked_at`, `last_used_at`.
+- **resumes** — versioned PDFs per `lang` (`en`\|`es`): `filename`, `content_type`, `size`, `sha256`, file under `RESUMES_DIR`, `created_at`. Latest per lang is current.
 
 Status free text is normalized to a prefix: `Skipped`, `Parked`, `Submitted`, `Needs-Deisy`, `Closed`, `Found`. `Needs Deisy` ≡ `Needs-Deisy`. `status_reason` is the text after `:` or inside `(...)`.
 
@@ -58,9 +61,9 @@ Bearer tokens (env or DB) use scopes:
 
 | Scope | Allows |
 |---|---|
-| `read` | List/get applications, updates, MCP read tools |
+| `read` | List/get applications, updates, resumes, MCP read tools |
 | `notes` | Add notes + mark done (REST + MCP) |
-| `ingest` | `POST /api/applications/upsert` only |
+| `ingest` | Upsert applications + upload resumes |
 
 - Env `READ_TOKEN` → `read,notes`
 - Env `INGEST_TOKEN` → `ingest,read,notes`
@@ -85,6 +88,8 @@ Send `Authorization: Bearer <token>` on MCP and REST routes.
 | `list_needs_deisy` | `read` | Open Needs-Deisy items |
 | `mark_done` | `notes` | Mark done / reopen |
 | `add_note` | `notes` | Author = token owner name (e.g. `deisy-bot`) |
+| `list_resumes` | `read` | Current resume per lang (filename, size, updated_at, sha256) |
+| `get_resume` | `read` | Embedded PDF (base64) + `signed_url` + `expires_at` |
 
 Tool descriptions are bilingual (Spanish first, English after).
 
@@ -129,6 +134,9 @@ All routes except `/api/health` require auth. `/mcp` requires a Bearer token.
 | `GET` | `/api/updates?since=ISO` | session or Bearer `read` | Done marks + notes since |
 | `POST` | `/api/applications/:id/notes` | session or Bearer `notes` | `{ body, author? }` — DB tokens force author = token name |
 | `POST` | `/api/applications/:id/done` | session or Bearer `notes` | `{ done?: boolean }` |
+| `POST` | `/api/resumes` | Bearer `ingest` | Multipart `file`+`lang`, or raw PDF + `?lang=` (PDF ≤10MB) |
+| `GET` | `/api/resumes` | session or Bearer `read` | All resume versions (newest first) |
+| `GET` | `/api/resumes/:lang/download` | signed `sig`+`exp` (15m HMAC) | Current PDF for lang |
 | `GET`/`POST`/`DELETE` | `/mcp` | Bearer | Remote MCP (streamable HTTP) |
 | `GET`/`POST` | `/api/admin/tokens` | Ryan session | List / mint |
 | `POST` | `/api/admin/tokens/:id/revoke` | Ryan session | Revoke |
