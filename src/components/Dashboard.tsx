@@ -116,6 +116,11 @@ export function Dashboard({ initial, userName }: Props) {
           </p>
         </div>
         <div className="top-actions">
+          {userName === "ryan" ? (
+            <a className="btn ghost" href="/admin/tokens">
+              Tokens
+            </a>
+          ) : null}
           <LangToggle lang={lang} onChange={changeLang} />
           <button type="button" className="btn ghost" onClick={logout}>
             {t(lang, "logout")}

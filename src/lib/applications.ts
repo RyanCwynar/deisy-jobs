@@ -232,7 +232,7 @@ export async function getNotes(
   return result.rows.map((r) => ({
     id: Number(r.id),
     application_id: String(r.application_id),
-    author: r.author as NoteRow["author"],
+    author: String(r.author),
     body: String(r.body),
     created_at: String(r.created_at),
   }));
@@ -241,7 +241,7 @@ export async function getNotes(
 export async function addNote(
   db: Client,
   applicationId: string,
-  author: NoteRow["author"],
+  author: string,
   body: string
 ): Promise<NoteRow> {
   await ensureSchema(db);
@@ -259,7 +259,7 @@ export async function addNote(
   return {
     id: Number(r.id),
     application_id: String(r.application_id),
-    author: r.author as NoteRow["author"],
+    author: String(r.author),
     body: String(r.body),
     created_at: String(r.created_at),
   };
@@ -302,7 +302,7 @@ export async function getUpdates(
     notes: notesResult.rows.map((r) => ({
       id: Number(r.id),
       application_id: String(r.application_id),
-      author: r.author as NoteRow["author"],
+      author: String(r.author),
       body: String(r.body),
       created_at: String(r.created_at),
     })),

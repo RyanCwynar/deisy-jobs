@@ -38,6 +38,39 @@ export function resetDb(): void {
   schemaReady = false;
 }
 
+async function migrateNotesAuthorConstraint(db: Client): Promise<void> {
+  const meta = await db.execute(
+    `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'notes'`
+  );
+  const sql = String(meta.rows[0]?.sql ?? "");
+  if (!sql) return;
+  // Old schema restricted authors; token owners (e.g. deisy-bot) need free-form names.
+  if (!/CHECK\s*\(\s*author\s+IN/i.test(sql)) return;
+
+  await db.execute(`
+    CREATE TABLE notes_migrated (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      application_id TEXT NOT NULL,
+      author TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (application_id) REFERENCES applications(id)
+    )
+  `);
+  await db.execute(
+    `INSERT INTO notes_migrated (id, application_id, author, body, created_at)
+     SELECT id, application_id, author, body, created_at FROM notes`
+  );
+  await db.execute(`DROP TABLE notes`);
+  await db.execute(`ALTER TABLE notes_migrated RENAME TO notes`);
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_notes_application ON notes(application_id)`
+  );
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_notes_created ON notes(created_at)`
+  );
+}
+
 export async function ensureSchema(db: Client = getDb()): Promise<Client> {
   if (schemaReady && db === client) return db;
 
@@ -66,10 +99,24 @@ export async function ensureSchema(db: Client = getDb()): Promise<Client> {
     CREATE TABLE IF NOT EXISTS notes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       application_id TEXT NOT NULL,
-      author TEXT NOT NULL CHECK (author IN ('deisy', 'ryan', 'bot')),
+      author TEXT NOT NULL,
       body TEXT NOT NULL,
       created_at TEXT NOT NULL,
       FOREIGN KEY (application_id) REFERENCES applications(id)
+    )
+  `);
+
+  await migrateNotesAuthorConstraint(db);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS api_tokens (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      scopes TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL,
+      revoked_at TEXT,
+      last_used_at TEXT
     )
   `);
 
@@ -87,6 +134,9 @@ export async function ensureSchema(db: Client = getDb()): Promise<Client> {
   );
   await db.execute(
     `CREATE INDEX IF NOT EXISTS idx_notes_created ON notes(created_at)`
+  );
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash)`
   );
 
   if (db === client) schemaReady = true;
@@ -115,7 +165,7 @@ export type ApplicationRow = {
 export type NoteRow = {
   id: number;
   application_id: string;
-  author: "deisy" | "ryan" | "bot";
+  author: string;
   body: string;
   created_at: string;
 };

@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireReadAccess } from "@/lib/auth";
+import { requireScopes } from "@/lib/auth";
 import { ensureSchema, getDb } from "@/lib/db";
 import { getUpdates } from "@/lib/applications";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const access = await requireReadAccess(req);
+  const access = await requireScopes(req, ["read"]);
   if (!access.ok) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { error: access.error },
+      { status: access.status }
+    );
   }
 
   const since = req.nextUrl.searchParams.get("since");

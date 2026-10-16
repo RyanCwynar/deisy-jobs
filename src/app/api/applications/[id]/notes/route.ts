@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getSessionFromRequest, hasReadToken } from "@/lib/auth";
+import { requireScopes } from "@/lib/auth";
 import { ensureSchema, getDb } from "@/lib/db";
 import { addNote, getApplication } from "@/lib/applications";
 
@@ -10,14 +10,16 @@ type Ctx = { params: Promise<{ id: string }> };
 
 const bodySchema = z.object({
   body: z.string().min(1).max(8000),
-  author: z.enum(["deisy", "ryan", "bot"]).optional(),
+  author: z.string().min(1).max(64).optional(),
 });
 
 export async function POST(req: NextRequest, ctx: Ctx) {
-  const session = await getSessionFromRequest(req);
-  const bearerOk = hasReadToken(req);
-  if (!session && !bearerOk) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await requireScopes(req, ["notes"]);
+  if (!access.ok) {
+    return NextResponse.json(
+      { error: access.error },
+      { status: access.status }
+    );
   }
 
   let json: unknown;
@@ -32,11 +34,14 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
-  const author =
-    parsed.data.author ??
-    (session?.name === "deisy" || session?.name === "ryan"
-      ? session.name
-      : "bot");
+  // DB tokens always attribute notes to the token name (e.g. deisy-bot).
+  // Sessions may override; env tokens default to "bot".
+  let author = access.principal.author;
+  if (access.principal.kind === "session" && parsed.data.author) {
+    author = parsed.data.author;
+  } else if (access.principal.kind === "env" && parsed.data.author) {
+    author = parsed.data.author;
+  }
 
   const { id } = await ctx.params;
   const db = await ensureSchema(getDb());

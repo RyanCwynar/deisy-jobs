@@ -2,6 +2,8 @@
 
 Private job-application tracker for Deisy. Next.js (App Router, TypeScript) with a local `@libsql/client` file database.
 
+Production: [https://deisy.byldr.co](https://deisy.byldr.co) (`next start` behind Traefik).
+
 ## Quick start
 
 ```bash
@@ -27,17 +29,20 @@ Open [http://127.0.0.1:3010](http://127.0.0.1:3010) and sign in.
 | `SESSION_SECRET` | yes | HMAC secret for httpOnly session cookie (≥16 chars) |
 | `DEISY_EMAIL` / `DEISY_PASSWORD_HASH` | yes | Deisy login |
 | `RYAN_EMAIL` / `RYAN_PASSWORD_HASH` | yes | Ryan login |
-| `INGEST_TOKEN` | yes | Bearer for `POST /api/applications/upsert` |
-| `READ_TOKEN` | yes | Bearer for read APIs (INGEST also accepted) |
+| `INGEST_TOKEN` | yes | Env bearer with `ingest` (+ read/notes). Kept for upsert pipelines |
+| `READ_TOKEN` | yes | Env bearer with `read` + `notes` |
 | `APP_URL` | no | Base URL for magic links |
 | `RESEND_API_KEY` | no | Enables magic-link email |
 | `RESEND_FROM` | no | From address (default Resend onboarding) |
 | `PORT` | no | Default `3010` |
 
+Schema migrations (including `api_tokens` and relaxing note authors) run automatically via `ensureSchema` on first DB use and on server start (`src/instrumentation.ts`).
+
 ## Data model
 
 - **applications** — upsert key `#` (zero-padded). CSV fields plus `status`, `status_reason`, `raw_status`, `done_at`, `updated_at`.
-- **notes** — `id`, `application_id`, `author` (`deisy` \| `ryan` \| `bot`), `body`, `created_at`.
+- **notes** — `id`, `application_id`, `author` (free-form string: `deisy` \| `ryan` \| `bot` \| token name e.g. `deisy-bot`), `body`, `created_at`.
+- **api_tokens** — `id`, `name`, `scopes`, `token_hash` (sha256 of plaintext), `created_at`, `revoked_at`, `last_used_at`.
 
 Status free text is normalized to a prefix: `Skipped`, `Parked`, `Submitted`, `Needs-Deisy`, `Closed`, `Found`. `Needs Deisy` ≡ `Needs-Deisy`. `status_reason` is the text after `:` or inside `(...)`.
 
@@ -47,19 +52,86 @@ Import is idempotent:
 npx tsx scripts/import.ts [path/to.csv]
 ```
 
+## Auth scopes
+
+Bearer tokens (env or DB) use scopes:
+
+| Scope | Allows |
+|---|---|
+| `read` | List/get applications, updates, MCP read tools |
+| `notes` | Add notes + mark done (REST + MCP) |
+| `ingest` | `POST /api/applications/upsert` only |
+
+- Env `READ_TOKEN` → `read,notes`
+- Env `INGEST_TOKEN` → `ingest,read,notes`
+- DB tokens: any subset. **Scoped bot tokens without `ingest` can never upsert.**
+
+Send `Authorization: Bearer <token>` on MCP and REST routes.
+
+## Remote MCP (streamable HTTP)
+
+| | |
+|---|---|
+| URL | `https://deisy.byldr.co/mcp` |
+| Transport | Streamable HTTP (`@modelcontextprotocol/sdk`) |
+| Auth | `Authorization: Bearer <token>` with at least the scopes each tool needs |
+
+### Tools
+
+| Tool | Scopes | Description |
+|---|---|---|
+| `list_applications` | `read` | Filters: `status`, `since`, `company` |
+| `get_application` | `read` | Application + notes |
+| `list_needs_deisy` | `read` | Open Needs-Deisy items |
+| `mark_done` | `notes` | Mark done / reopen |
+| `add_note` | `notes` | Author = token owner name (e.g. `deisy-bot`) |
+
+Tool descriptions are bilingual (Spanish first, English after).
+
+### Cursor / client config example
+
+```json
+{
+  "mcpServers": {
+    "deisy-jobs": {
+      "url": "https://deisy.byldr.co/mcp",
+      "headers": {
+        "Authorization": "Bearer dj_…"
+      }
+    }
+  }
+}
+```
+
+## API tokens (mint / revoke)
+
+Ryan-only UI: [/admin/tokens](https://deisy.byldr.co/admin/tokens) (linked from the dashboard when signed in as Ryan). Plaintext is shown once on mint.
+
+CLI (prints plaintext once):
+
+```bash
+npm run token:mint -- --name deisy-bot --scopes read,notes
+npm run token:revoke -- --id <uuid>
+# or revoke all active tokens with a name:
+npm run token:revoke -- --name deisy-bot
+```
+
 ## API summary
 
-All routes except `/api/health` require auth.
+All routes except `/api/health` require auth. `/mcp` requires a Bearer token.
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
 | `GET` | `/api/health` | open | Liveness + app count |
-| `POST` | `/api/applications/upsert` | `Bearer INGEST_TOKEN` | Body `{ applications: [...] }`, batch, idempotent |
-| `GET` | `/api/applications` | session or `READ`/`INGEST` | Query: `status`, `since`, `company`, `from`, `to`, `cv` |
-| `GET` | `/api/applications/:id` | session or `READ`/`INGEST` | App + notes |
-| `GET` | `/api/updates?since=ISO` | session or `READ`/`INGEST` | Done marks + notes since |
-| `POST` | `/api/applications/:id/notes` | session or `READ` | `{ body, author? }` |
-| `POST` | `/api/applications/:id/done` | session or `READ` | `{ done?: boolean }` |
+| `POST` | `/api/applications/upsert` | Bearer with `ingest` | Body `{ applications: [...] }`, batch, idempotent |
+| `GET` | `/api/applications` | session or Bearer `read` | Query: `status`, `since`, `company`, `from`, `to`, `cv` |
+| `GET` | `/api/applications/:id` | session or Bearer `read` | App + notes |
+| `GET` | `/api/updates?since=ISO` | session or Bearer `read` | Done marks + notes since |
+| `POST` | `/api/applications/:id/notes` | session or Bearer `notes` | `{ body, author? }` — DB tokens force author = token name |
+| `POST` | `/api/applications/:id/done` | session or Bearer `notes` | `{ done?: boolean }` |
+| `GET`/`POST`/`DELETE` | `/mcp` | Bearer | Remote MCP (streamable HTTP) |
+| `GET`/`POST` | `/api/admin/tokens` | Ryan session | List / mint |
+| `POST` | `/api/admin/tokens/:id/revoke` | Ryan session | Revoke |
 | `POST` | `/api/auth/login` | open | Email + password → session cookie |
 | `POST` | `/api/auth/logout` | session | Clears cookie |
 | `POST` | `/api/auth/magic-link` | open | Requires `RESEND_API_KEY` |
@@ -68,7 +140,7 @@ All routes except `/api/health` require auth.
 ### Upsert example
 
 ```bash
-curl -sS -X POST https://jobs.byldr.co/api/applications/upsert \
+curl -sS -X POST https://deisy.byldr.co/api/applications/upsert \
   -H "Authorization: Bearer $INGEST_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"applications":[{"id":"01","company":"Hexion","role":"Planner","status":"Skipped (not eligible)","cv":"EN"}]}'
@@ -77,13 +149,13 @@ curl -sS -X POST https://jobs.byldr.co/api/applications/upsert \
 ### Read example
 
 ```bash
-curl -sS "https://jobs.byldr.co/api/applications?status=Needs-Deisy" \
+curl -sS "https://deisy.byldr.co/api/applications?status=Needs-Deisy" \
   -H "Authorization: Bearer $READ_TOKEN"
 ```
 
 ## UI
 
-Mobile-first. Open **Needs Deisy** items are pinned at the top with mark-done and reply. Filters: status, date range, company search. EN/ES label toggle. All pages require login.
+Mobile-first. Open **Needs Deisy** items are pinned at the top with mark-done and reply. Filters: status, date range, company search. EN/ES label toggle. All pages require login. Ryan sees a **Tokens** admin link.
 
 ## Tests
 
@@ -91,11 +163,46 @@ Mobile-first. Open **Needs Deisy** items are pinned at the top with mark-done an
 npm test
 ```
 
-Covers status normalization, idempotent CSV import, upsert, and API auth gates.
+Covers status normalization, idempotent CSV import, upsert, API auth gates, token scopes/revocation, and MCP tool calls. Do **not** add Playwright/E2E jobs to GitHub Actions for this work.
 
-## Deploy (jobs.byldr.co)
+## Deploy (deisy.byldr.co)
 
 Do **not** run these from this agent session — ship artifacts only.
+
+### Redeploy (typical host)
+
+```bash
+cd /opt/deisy-jobs-src   # or your checkout
+git pull
+npm ci
+npm run build
+# copy standalone output if using systemd layout:
+# rm -rf /opt/deisy-jobs/*
+# cp -a .next/standalone/. /opt/deisy-jobs/
+# cp -a .next/static /opt/deisy-jobs/.next/static
+# cp -a public /opt/deisy-jobs/public
+# keep existing data/ and .env
+sudo systemctl restart deisy-jobs
+```
+
+Or Docker:
+
+```bash
+docker build -t deisy-jobs .
+docker stop deisy-jobs && docker rm deisy-jobs
+docker run -d --name deisy-jobs -p 127.0.0.1:3010:3010 \
+  --env-file .env \
+  -v deisy-jobs-data:/app/data \
+  deisy-jobs
+```
+
+### Mint a bot token after deploy
+
+```bash
+cd /opt/deisy-jobs-src   # where package.json + data/ (or DATABASE_URL) point at prod DB
+npm run token:mint -- --name deisy-bot --scopes read,notes
+# copy the plaintext once into the MCP client Authorization header
+```
 
 ### Option A — standalone build + systemd
 
@@ -151,3 +258,5 @@ Point DNS `jobs.byldr.co` A/AAAA at the host before issuing the cert.
 |---|---|
 | `scripts/import.ts` | Idempotent CSV import |
 | `scripts/hash-password.ts` | Generate bcrypt hash for env |
+| `scripts/token-mint.ts` | Mint DB API token (plaintext once) |
+| `scripts/token-revoke.ts` | Revoke by `--id` or `--name` |

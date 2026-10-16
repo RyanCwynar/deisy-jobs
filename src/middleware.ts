@@ -9,6 +9,7 @@ const PUBLIC_PATHS = [
   "/api/auth/login",
   "/api/auth/magic-link",
   "/api/auth/magic-verify",
+  "/mcp",
 ];
 
 function isPublic(pathname: string): boolean {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { hasIngestToken } from "@/lib/auth";
+import { requireScopes } from "@/lib/auth";
 import { ensureSchema, getDb } from "@/lib/db";
 import { upsertMany } from "@/lib/applications";
 
@@ -27,8 +27,12 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  if (!hasIngestToken(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const access = await requireScopes(req, ["ingest"]);
+  if (!access.ok) {
+    return NextResponse.json(
+      { error: access.error },
+      { status: access.status }
+    );
   }
 
   let json: unknown;

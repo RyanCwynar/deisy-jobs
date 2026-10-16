@@ -11,10 +11,13 @@
     "test:watch": "vitest",
     "import": "tsx scripts/import.ts",
     "hash-password": "tsx scripts/hash-password.ts",
+    "token:mint": "tsx scripts/token-mint.ts",
+    "token:revoke": "tsx scripts/token-revoke.ts",
     "test:ui": "node scripts/ui-smoke.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "bcryptjs": "^3.0.3",
     "csv-parse": "^7.0.3",
     "jose": "^6.2.12",

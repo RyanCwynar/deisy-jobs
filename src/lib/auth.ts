@@ -2,11 +2,18 @@ import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { NextRequest } from "next/server";
+import { ensureSchema, getDb } from "./db";
+import { hasScope, type ApiScope } from "./scopes";
+import { resolveBearerToken, type ResolvedBearer } from "./tokens";
 
 export type SessionUser = {
   email: string;
   name: "deisy" | "ryan";
 };
+
+export type AccessPrincipal =
+  | { kind: "session"; user: SessionUser; scopes: ApiScope[]; author: string }
+  | (ResolvedBearer & { user: null });
 
 const COOKIE_NAME = "deisy_jobs_session";
 const MAGIC_COOKIE = "deisy_jobs_magic";
@@ -121,19 +128,68 @@ export async function getSessionFromRequest(
   return verifySessionToken(token);
 }
 
-export function getBearerToken(req: NextRequest): string | null {
-  const h = req.headers.get("authorization");
+export function getBearerToken(req: NextRequest | Request): string | null {
+  const h =
+    req instanceof NextRequest
+      ? req.headers.get("authorization")
+      : req.headers.get("authorization");
   if (!h) return null;
   const m = h.match(/^Bearer\s+(.+)$/i);
   return m?.[1]?.trim() ?? null;
 }
 
+export async function resolveAccess(
+  req: NextRequest | Request
+): Promise<AccessPrincipal | null> {
+  const bearer = getBearerToken(req);
+  if (bearer) {
+    const db = await ensureSchema(getDb());
+    const resolved = await resolveBearerToken(db, bearer);
+    if (resolved) return { ...resolved, user: null };
+  }
+
+  if (req instanceof NextRequest) {
+    const user = await getSessionFromRequest(req);
+    if (user) {
+      return {
+        kind: "session",
+        user,
+        scopes: ["read", "notes"],
+        author: user.name,
+      };
+    }
+  }
+
+  return null;
+}
+
+export async function requireScopes(
+  req: NextRequest | Request,
+  needed: readonly ApiScope[]
+): Promise<
+  | { ok: true; principal: AccessPrincipal }
+  | { ok: false; status: 401 | 403; error: string }
+> {
+  const principal = await resolveAccess(req);
+  if (!principal) {
+    return { ok: false, status: 401, error: "Unauthorized" };
+  }
+  for (const scope of needed) {
+    if (!hasScope(principal.scopes, scope)) {
+      return { ok: false, status: 403, error: `Missing scope: ${scope}` };
+    }
+  }
+  return { ok: true, principal };
+}
+
+/** @deprecated Prefer requireScopes — kept for existing tests / call sites. */
 export function hasIngestToken(req: NextRequest): boolean {
   const token = getBearerToken(req);
   const expected = process.env.INGEST_TOKEN;
   return Boolean(token && expected && token === expected);
 }
 
+/** @deprecated Prefer requireScopes — kept for existing tests / call sites. */
 export function hasReadToken(req: NextRequest): boolean {
   const token = getBearerToken(req);
   if (!token) return false;
@@ -144,14 +200,20 @@ export function hasReadToken(req: NextRequest): boolean {
   );
 }
 
-/** Session cookie or READ/INGEST bearer. */
+/** Session cookie or bearer with read scope. */
 export async function requireReadAccess(
   req: NextRequest
-): Promise<{ ok: true; user: SessionUser | null } | { ok: false }> {
-  if (hasReadToken(req)) return { ok: true, user: null };
-  const user = await getSessionFromRequest(req);
-  if (user) return { ok: true, user };
-  return { ok: false };
+): Promise<
+  | { ok: true; user: SessionUser | null; principal: AccessPrincipal }
+  | { ok: false }
+> {
+  const access = await requireScopes(req, ["read"]);
+  if (!access.ok) return { ok: false };
+  return {
+    ok: true,
+    user: access.principal.kind === "session" ? access.principal.user : null,
+    principal: access.principal,
+  };
 }
 
 export async function createMagicToken(email: string): Promise<string> {
