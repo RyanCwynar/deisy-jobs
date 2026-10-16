@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 type TokenView = {
@@ -84,9 +85,9 @@ export function TokensAdmin() {
           <p className="user">API tokens · ryan only</p>
         </div>
         <div className="top-actions">
-          <a className="btn ghost" href="/">
+          <Link className="btn ghost" href="/">
             Dashboard
-          </a>
+          </Link>
         </div>
       </header>
 
