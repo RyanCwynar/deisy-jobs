@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Client } from "@libsql/client";
 import { ensureSchema } from "./db";
+import { resolvePublicOrigin, type OriginRequestLike } from "./public-origin";
 
 export type ResumeLang = "en" | "es";
 
@@ -178,10 +179,8 @@ export function readResumeBytes(row: ResumeRow): Buffer {
   return fs.readFileSync(abs);
 }
 
-export function appBaseUrl(): string {
-  const fromEnv = process.env.APP_URL?.trim().replace(/\/$/, "");
-  if (fromEnv) return fromEnv;
-  return "http://127.0.0.1:3010";
+export function appBaseUrl(req?: OriginRequestLike | null): string {
+  return resolvePublicOrigin(req);
 }
 
 function signPayload(lang: ResumeLang, exp: number): string {

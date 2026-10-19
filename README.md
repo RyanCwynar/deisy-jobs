@@ -31,7 +31,7 @@ Open [http://127.0.0.1:3010](http://127.0.0.1:3010) and sign in.
 | `RYAN_EMAIL` / `RYAN_PASSWORD_HASH` | yes | Ryan login |
 | `INGEST_TOKEN` | yes | Env bearer with `ingest` (+ read/notes). Kept for upsert pipelines |
 | `READ_TOKEN` | yes | Env bearer with `read` + `notes` |
-| `APP_URL` | no | Base URL for magic links |
+| `APP_URL` | no | Public origin fallback (`NEXT_PUBLIC_APP_URL` / `DEISY_JOBS_URL` also accepted). Behind Traefik, `x-forwarded-host` + `x-forwarded-proto` win for redirects |
 | `RESEND_API_KEY` | no | Enables magic-link email |
 | `RESEND_FROM` | no | From address (default Resend onboarding) |
 | `PORT` | no | Default `3010` |

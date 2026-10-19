@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
+import { publicAbsoluteUrl } from "@/lib/public-origin";
 
 const COOKIE_NAME = "deisy_jobs_session";
 
@@ -21,6 +22,13 @@ function isPublic(pathname: string): boolean {
   return false;
 }
 
+function loginRedirect(req: NextRequest, nextPath?: string, error?: string) {
+  const login = publicAbsoluteUrl("/login", req);
+  if (nextPath) login.searchParams.set("next", nextPath);
+  if (error) login.searchParams.set("error", error);
+  return NextResponse.redirect(login);
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (isPublic(pathname)) {
@@ -29,23 +37,19 @@ export async function middleware(req: NextRequest) {
 
   const secret = process.env.SESSION_SECRET;
   if (!secret) {
-    return NextResponse.redirect(new URL("/login?error=config", req.url));
+    return loginRedirect(req, undefined, "config");
   }
 
   const token = req.cookies.get(COOKIE_NAME)?.value;
   if (!token) {
-    const login = new URL("/login", req.url);
-    login.searchParams.set("next", pathname);
-    return NextResponse.redirect(login);
+    return loginRedirect(req, pathname);
   }
 
   try {
     await jwtVerify(token, new TextEncoder().encode(secret));
     return NextResponse.next();
   } catch {
-    const login = new URL("/login", req.url);
-    login.searchParams.set("next", pathname);
-    const res = NextResponse.redirect(login);
+    const res = loginRedirect(req, pathname);
     res.cookies.delete(COOKIE_NAME);
     return res;
   }

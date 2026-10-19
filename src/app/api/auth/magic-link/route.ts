@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Resend } from "resend";
 import { createMagicToken, findUserByEmail } from "@/lib/auth";
+import { resolvePublicOrigin } from "@/lib/public-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -37,10 +38,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const token = await createMagicToken(user.email);
-    const base =
-      process.env.APP_URL ??
-      req.nextUrl.origin ??
-      "http://127.0.0.1:3010";
+    const base = resolvePublicOrigin(req);
     const link = `${base}/api/auth/magic-verify?token=${encodeURIComponent(token)}`;
 
     const resend = new Resend(process.env.RESEND_API_KEY);
