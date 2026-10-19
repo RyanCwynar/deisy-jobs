@@ -202,6 +202,13 @@ describe("MCP tool handlers", () => {
         "update_status",
         "upload_resume",
         "list_changes",
+        "next_tasks",
+        "list_tasks",
+        "create_task",
+        "update_task",
+        "complete_task",
+        "snooze_task",
+        "drop_task",
       ])
     );
 

@@ -47,6 +47,8 @@ Schema migrations (including `api_tokens`, `resumes`, and relaxing note authors)
 - **api_tokens** — `id`, `name`, `scopes`, `token_hash` (sha256 of plaintext), `created_at`, `revoked_at`, `last_used_at`.
 - **resumes** — versioned PDFs per `lang` (`en`\|`es`): `filename`, `content_type`, `size`, `sha256`, file under `RESUMES_DIR`, `created_at`. Latest per lang is current.
 - **change_log** — audit of creates/updates: `id`, `at`, `actor`, `token_id`, `entity`, `entity_id`, `action`, `diff` (JSON).
+- **tasks** — Deisy to-dos: `title`, `detail`, `kind` (`photo|video|audio|assessment|essay|account|answer|upload|interview|other`), `status` (`open|done|snoozed|dropped`), `priority`, `due_date`, `application_id` (primary convenience link), `created_by`, `done_at`, `reply`, `snoozed_until`, `seed_key` (idempotent seed).
+- **task_applications** — join table (source of truth for multi-app links).
 
 Status free text is normalized to a prefix: `Skipped`, `Parked`, `Submitted`, `Needs-Deisy`, `Closed`, `Found`. `Needs Deisy` ≡ `Needs-Deisy`. `status_reason` is the text after `:` or inside `(...)`.
 
@@ -56,19 +58,26 @@ Import is idempotent:
 npx tsx scripts/import.ts [path/to.csv]
 ```
 
+Seed tasks from open Needs-Deisy rows (idempotent; dedupes identical asks into one task linked to many apps):
+
+```bash
+npm run seed:tasks
+```
+
 ## Auth scopes
 
 Bearer tokens (env or DB) use scopes:
 
 | Scope | Allows |
 |---|---|
-| `read` | List/get applications, updates, resumes, changes, MCP read tools |
+| `read` | List/get applications, updates, resumes, changes, tasks, MCP read tools |
 | `notes` | Add notes + mark done (REST + MCP) |
-| `write` | MCP `upsert_application`, `update_status`, `upload_resume` |
+| `write` | App/resume mutations + task create/update/complete/snooze/drop |
 | `ingest` | REST upsert applications + REST upload resumes |
 
 - Env `READ_TOKEN` → `read,notes`
-- Env `INGEST_TOKEN` → `ingest,read,notes`
+- Env `INGEST_TOKEN` → `ingest,read,notes,write`
+- Session login → `read,notes,write`
 - DB tokens: any subset. **Scoped bot tokens without `ingest` can never REST-upsert.**
 
 Send `Authorization: Bearer <token>` on MCP and REST routes.
@@ -98,6 +107,26 @@ Audit `actor` is the token name (e.g. `deisy-bot`), `ingest` for the env ingest 
 | `update_status` | `write` | Status-only update (no delete; close via status) |
 | `upload_resume` | `write` | PDF base64 → current version for `en`\|`es` |
 | `list_changes` | `read` | Audit log (`since`, `actor`, `limit`) |
+| `next_tasks` | `read` | Ranked open (+ due snoozed) tasks with app context |
+| `list_tasks` | `read` | Filter by `status`, `application_id` |
+| `create_task` | `write` | See field spec below |
+| `update_task` | `write` | Patch title/detail/kind/priority/due_date/application_ids |
+| `complete_task` | `write` | `{ id, note? }` |
+| `snooze_task` | `write` | `{ id, until? \| days? }` |
+| `drop_task` | `write` | `{ id }` |
+
+Notes on applications: use existing `add_note` (`{ id, body }`) — no separate `add_application_note`.
+
+#### `create_task` fields
+
+| Field | Required | Type | Notes |
+|---|---|---|---|
+| `title` | yes | string | Plain-language instruction |
+| `detail` | no | string | Longer what-to-do + context |
+| `kind` | yes | enum | `photo\|video\|audio\|assessment\|essay\|account\|answer\|upload\|interview\|other` |
+| `application_ids` | yes | string[] | One or more application ids (join is source of truth) |
+| `priority` | no | int | Higher = sooner (after linked-count + pay) |
+| `due_date` | no | string \| null | ISO date/time |
 
 Tool descriptions are bilingual (Spanish first, English after).
 
@@ -148,6 +177,13 @@ All routes except `/api/health` require auth. `/mcp` requires a Bearer token.
 | `GET` | `/api/resumes` | session or Bearer `read` | All resume versions (newest first) |
 | `GET` | `/api/resumes/:lang/download` | signed `sig`+`exp` (15m HMAC) | Current PDF for lang |
 | `GET` | `/api/changes` | session or Bearer `read` | Query: `since`, `actor`, `limit` |
+| `GET` | `/api/tasks` | session or Bearer `read` | Query: `status`, `application_id` |
+| `GET` | `/api/tasks/next` | session or Bearer `read` | Ranked queue (`limit`) |
+| `POST` | `/api/tasks` | Bearer/session `write` | Create task |
+| `PATCH` | `/api/tasks/:id` | Bearer/session `write` | Update task |
+| `POST` | `/api/tasks/:id/complete` | Bearer/session `write` | `{ note? }` |
+| `POST` | `/api/tasks/:id/snooze` | Bearer/session `write` | `{ until? \| days? }` |
+| `POST` | `/api/tasks/:id/drop` | Bearer/session `write` | Drop task |
 | `GET`/`POST`/`DELETE` | `/mcp` | Bearer | Remote MCP (streamable HTTP) |
 | `GET`/`POST` | `/api/admin/tokens` | Ryan session | List / mint |
 | `POST` | `/api/admin/tokens/:id/revoke` | Ryan session | Revoke |
@@ -174,7 +210,7 @@ curl -sS "https://deisy.byldr.co/api/applications?status=Needs-Deisy" \
 
 ## UI
 
-Mobile-first. Open **Needs Deisy** items are pinned at the top with mark-done and reply. Filters: status, date range, company search. EN/ES label toggle. All pages require login. Ryan sees a **Tokens** admin link.
+Mobile-first. Open **Needs Deisy** items are pinned at the top with mark-done and reply. **Your to-dos** (`/todos`) lists open tasks in `next_tasks` order with complete/snooze. Filters: status, date range, company search. EN/ES label toggle. All pages require login. Ryan sees a **Tokens** admin link.
 
 ## Tests
 
@@ -280,3 +316,4 @@ Point DNS `jobs.byldr.co` A/AAAA at the host before issuing the cert.
 | `scripts/token-mint.ts` | Mint DB API token (plaintext once) |
 | `scripts/token-scopes.ts` | Set scopes on an existing token by id |
 | `scripts/token-revoke.ts` | Revoke by `--id` or `--name` |
+| `scripts/seed-tasks.ts` | Idempotent Needs-Deisy → tasks seed |

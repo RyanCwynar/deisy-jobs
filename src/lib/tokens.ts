@@ -183,7 +183,7 @@ export async function resolveBearerToken(
     return {
       kind: "env",
       name: "INGEST_TOKEN",
-      scopes: ["ingest", "read", "notes"],
+      scopes: ["ingest", "read", "notes", "write"],
       author: "bot",
     };
   }

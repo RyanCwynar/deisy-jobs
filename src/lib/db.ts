@@ -177,6 +177,43 @@ export async function ensureSchema(db: Client = getDb()): Promise<Client> {
     `CREATE INDEX IF NOT EXISTS idx_change_log_entity ON change_log(entity, entity_id)`
   );
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS tasks (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      detail TEXT NOT NULL DEFAULT '',
+      kind TEXT NOT NULL,
+      status TEXT NOT NULL,
+      priority INTEGER NOT NULL DEFAULT 0,
+      due_date TEXT,
+      application_id TEXT,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      done_at TEXT,
+      reply TEXT,
+      snoozed_until TEXT,
+      seed_key TEXT UNIQUE
+    )
+  `);
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS task_applications (
+      task_id TEXT NOT NULL,
+      application_id TEXT NOT NULL,
+      PRIMARY KEY (task_id, application_id),
+      FOREIGN KEY (task_id) REFERENCES tasks(id),
+      FOREIGN KEY (application_id) REFERENCES applications(id)
+    )
+  `);
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)`
+  );
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_tasks_seed_key ON tasks(seed_key)`
+  );
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_task_applications_app ON task_applications(application_id)`
+  );
+
   if (db === client) schemaReady = true;
   return db;
 }

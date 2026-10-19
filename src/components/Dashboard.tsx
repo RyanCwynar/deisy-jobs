@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ApplicationRow, NoteRow } from "@/lib/db";
 import { t, type Lang } from "@/lib/i18n";
@@ -116,6 +117,9 @@ export function Dashboard({ initial, userName }: Props) {
           </p>
         </div>
         <div className="top-actions">
+          <Link className="btn ghost" href="/todos">
+            {t(lang, "todos")}
+          </Link>
           {userName === "ryan" ? (
             <a className="btn ghost" href="/admin/tokens">
               Tokens

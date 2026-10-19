@@ -41,6 +41,13 @@ const dict = {
     submitted: "Submitted",
     closed: "Closed",
     foundStatus: "Found",
+    todos: "Your to-dos",
+    todosLede: "Open tasks that unblock one or more applications — do these first.",
+    todosEmpty: "No open tasks right now.",
+    snooze: "Snooze 3 days",
+    due: "Due",
+    application: "application",
+    applications: "applications",
   },
   es: {
     appName: "deisy-jobs",
@@ -82,6 +89,14 @@ const dict = {
     submitted: "Enviado",
     closed: "Cerrado",
     foundStatus: "Hallado",
+    todos: "Tus pendientes",
+    todosLede:
+      "Tareas abiertas que desbloquean una o más solicitudes — haz estas primero.",
+    todosEmpty: "No hay tareas abiertas ahora.",
+    snooze: "Posponer 3 días",
+    due: "Vence",
+    application: "solicitud",
+    applications: "solicitudes",
   },
 } as const;
 

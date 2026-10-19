@@ -154,7 +154,7 @@ export async function resolveAccess(
       return {
         kind: "session",
         user,
-        scopes: ["read", "notes"],
+        scopes: ["read", "notes", "write"],
         author: user.name,
       };
     }

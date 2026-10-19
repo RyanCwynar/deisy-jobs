@@ -4,18 +4,26 @@ import type { Client } from "@libsql/client";
 import {
   MCP_TOOL_DESCRIPTIONS,
   toolAddNote,
+  toolCompleteTask,
+  toolCreateTask,
+  toolDropTask,
   toolGetApplication,
   toolGetResume,
   toolListApplications,
   toolListChanges,
   toolListNeedsDeisy,
   toolListResumes,
+  toolListTasks,
   toolMarkDone,
+  toolNextTasks,
+  toolSnoozeTask,
   toolUpdateStatus,
+  toolUpdateTask,
   toolUploadResume,
   toolUpsertApplication,
   type McpCaller,
 } from "./mcp-tools";
+import { TASK_KINDS, TASK_STATUSES } from "./tasks";
 
 const optionalNullableString = z.string().nullable().optional();
 
@@ -178,6 +186,102 @@ export function createDeisyMcpServer(db: Client, caller: McpCaller): McpServer {
       },
     },
     async (args) => toolListChanges(db, caller, args)
+  );
+
+  server.registerTool(
+    "next_tasks",
+    {
+      description: MCP_TOOL_DESCRIPTIONS.next_tasks,
+      inputSchema: {
+        limit: z.number().int().positive().max(100).optional(),
+      },
+    },
+    async (args) => toolNextTasks(db, caller, args)
+  );
+
+  server.registerTool(
+    "list_tasks",
+    {
+      description: MCP_TOOL_DESCRIPTIONS.list_tasks,
+      inputSchema: {
+        status: z
+          .enum(TASK_STATUSES as unknown as [string, ...string[]])
+          .optional(),
+        application_id: z.string().optional(),
+      },
+    },
+    async (args) => toolListTasks(db, caller, args)
+  );
+
+  server.registerTool(
+    "create_task",
+    {
+      description: MCP_TOOL_DESCRIPTIONS.create_task,
+      inputSchema: {
+        title: z.string().min(1),
+        detail: z.string().optional(),
+        kind: z.enum(TASK_KINDS as unknown as [string, ...string[]]),
+        application_ids: z.array(z.string()).min(1),
+        priority: z.number().int().optional(),
+        due_date: z.string().nullable().optional(),
+      },
+    },
+    async (args) => toolCreateTask(db, caller, args)
+  );
+
+  server.registerTool(
+    "update_task",
+    {
+      description: MCP_TOOL_DESCRIPTIONS.update_task,
+      inputSchema: {
+        id: z.string(),
+        title: z.string().optional(),
+        detail: z.string().optional(),
+        priority: z.number().int().optional(),
+        due_date: z.string().nullable().optional(),
+        kind: z
+          .enum(TASK_KINDS as unknown as [string, ...string[]])
+          .optional(),
+        application_ids: z.array(z.string()).min(1).optional(),
+      },
+    },
+    async (args) => toolUpdateTask(db, caller, args)
+  );
+
+  server.registerTool(
+    "complete_task",
+    {
+      description: MCP_TOOL_DESCRIPTIONS.complete_task,
+      inputSchema: {
+        id: z.string(),
+        note: z.string().optional(),
+      },
+    },
+    async (args) => toolCompleteTask(db, caller, args)
+  );
+
+  server.registerTool(
+    "snooze_task",
+    {
+      description: MCP_TOOL_DESCRIPTIONS.snooze_task,
+      inputSchema: {
+        id: z.string(),
+        until: z.string().optional(),
+        days: z.number().positive().optional(),
+      },
+    },
+    async (args) => toolSnoozeTask(db, caller, args)
+  );
+
+  server.registerTool(
+    "drop_task",
+    {
+      description: MCP_TOOL_DESCRIPTIONS.drop_task,
+      inputSchema: {
+        id: z.string(),
+      },
+    },
+    async (args) => toolDropTask(db, caller, args)
   );
 
   return server;

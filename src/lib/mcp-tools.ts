@@ -27,6 +27,19 @@ import {
   storeResume,
 } from "./resumes";
 import { hasScope, type ApiScope } from "./scopes";
+import {
+  completeTask,
+  createTask,
+  dropTask,
+  listTasks,
+  nextTasks,
+  parseTaskKind,
+  parseTaskStatus,
+  snoozeTask,
+  taskPublicView,
+  updateTask,
+  type TaskKind,
+} from "./tasks";
 
 export type McpCaller = AuditActor & {
   scopes: readonly ApiScope[] | readonly string[];
@@ -330,6 +343,195 @@ export async function toolListChanges(
   return textResult({ changes, count: changes.length });
 }
 
+export async function toolNextTasks(
+  db: Client,
+  caller: McpCaller,
+  args: { limit?: number }
+) {
+  const denied = requireCallerScope(caller, "read");
+  if (denied) return denied;
+  const tasks = await nextTasks(db, args.limit ?? 20);
+  return textResult({
+    tasks: tasks.map(taskPublicView),
+    count: tasks.length,
+  });
+}
+
+export async function toolListTasks(
+  db: Client,
+  caller: McpCaller,
+  args: { status?: string; application_id?: string }
+) {
+  const denied = requireCallerScope(caller, "read");
+  if (denied) return denied;
+  const status = args.status ? parseTaskStatus(args.status) : undefined;
+  if (args.status && !status) return errorResult("Invalid status");
+  const tasks = await listTasks(db, {
+    status: status ?? undefined,
+    application_id: args.application_id,
+  });
+  return textResult({ tasks: tasks.map(taskPublicView), count: tasks.length });
+}
+
+export async function toolCreateTask(
+  db: Client,
+  caller: McpCaller,
+  args: {
+    title: string;
+    detail?: string;
+    kind: string;
+    application_ids: string[];
+    priority?: number;
+    due_date?: string | null;
+  }
+) {
+  const denied = requireCallerScope(caller, "write");
+  if (denied) return denied;
+  const kind = parseTaskKind(args.kind);
+  if (!kind) return errorResult("Invalid kind");
+  try {
+    const task = await createTask(db, {
+      title: args.title,
+      detail: args.detail,
+      kind,
+      application_ids: args.application_ids,
+      priority: args.priority,
+      due_date: args.due_date,
+      created_by: caller.actor,
+    });
+    await recordChange(db, {
+      actor: caller.actor,
+      token_id: caller.token_id,
+      entity: "task",
+      entity_id: task.id,
+      action: "create",
+      diff: {
+        title: task.title,
+        kind: task.kind,
+        application_ids: task.application_ids,
+      },
+    });
+    return textResult({ ok: true, task: taskPublicView(task) });
+  } catch (err) {
+    return errorResult(err instanceof Error ? err.message : "Create failed");
+  }
+}
+
+export async function toolUpdateTask(
+  db: Client,
+  caller: McpCaller,
+  args: {
+    id: string;
+    title?: string;
+    detail?: string;
+    priority?: number;
+    due_date?: string | null;
+    kind?: string;
+    application_ids?: string[];
+  }
+) {
+  const denied = requireCallerScope(caller, "write");
+  if (denied) return denied;
+  let kind: TaskKind | undefined;
+  if (args.kind !== undefined) {
+    const parsed = parseTaskKind(args.kind);
+    if (!parsed) return errorResult("Invalid kind");
+    kind = parsed;
+  }
+  try {
+    const task = await updateTask(db, args.id, {
+      title: args.title,
+      detail: args.detail,
+      priority: args.priority,
+      due_date: args.due_date,
+      kind,
+      application_ids: args.application_ids,
+    });
+    if (!task) return errorResult("Not found");
+    await recordChange(db, {
+      actor: caller.actor,
+      token_id: caller.token_id,
+      entity: "task",
+      entity_id: task.id,
+      action: "update",
+      diff: {
+        title: task.title,
+        detail: task.detail,
+        kind: task.kind,
+        priority: task.priority,
+        due_date: task.due_date,
+        application_ids: task.application_ids,
+      },
+    });
+    return textResult({ ok: true, task: taskPublicView(task) });
+  } catch (err) {
+    return errorResult(err instanceof Error ? err.message : "Update failed");
+  }
+}
+
+export async function toolCompleteTask(
+  db: Client,
+  caller: McpCaller,
+  args: { id: string; note?: string }
+) {
+  const denied = requireCallerScope(caller, "write");
+  if (denied) return denied;
+  const task = await completeTask(db, args.id, args.note);
+  if (!task) return errorResult("Not found");
+  await recordChange(db, {
+    actor: caller.actor,
+    token_id: caller.token_id,
+    entity: "task",
+    entity_id: task.id,
+    action: "update",
+    diff: { status: "done", reply: task.reply },
+  });
+  return textResult({ ok: true, task: taskPublicView(task) });
+}
+
+export async function toolSnoozeTask(
+  db: Client,
+  caller: McpCaller,
+  args: { id: string; until?: string; days?: number }
+) {
+  const denied = requireCallerScope(caller, "write");
+  if (denied) return denied;
+  const task = await snoozeTask(db, args.id, {
+    until: args.until,
+    days: args.days,
+  });
+  if (!task) return errorResult("Not found");
+  await recordChange(db, {
+    actor: caller.actor,
+    token_id: caller.token_id,
+    entity: "task",
+    entity_id: task.id,
+    action: "update",
+    diff: { status: "snoozed", snoozed_until: task.snoozed_until },
+  });
+  return textResult({ ok: true, task: taskPublicView(task) });
+}
+
+export async function toolDropTask(
+  db: Client,
+  caller: McpCaller,
+  args: { id: string }
+) {
+  const denied = requireCallerScope(caller, "write");
+  if (denied) return denied;
+  const task = await dropTask(db, args.id);
+  if (!task) return errorResult("Not found");
+  await recordChange(db, {
+    actor: caller.actor,
+    token_id: caller.token_id,
+    entity: "task",
+    entity_id: task.id,
+    action: "update",
+    diff: { status: "dropped" },
+  });
+  return textResult({ ok: true, task: taskPublicView(task) });
+}
+
 export const MCP_TOOL_DESCRIPTIONS = {
   list_applications:
     "Lista solicitudes de empleo con filtros opcionales (status, since, company). / List job applications with optional status, since, and company filters.",
@@ -353,4 +555,18 @@ export const MCP_TOOL_DESCRIPTIONS = {
     "Sube un CV PDF (base64) para en|es; queda como versión actual. Requiere write. / Upload a resume PDF (base64) for en|es; becomes the current version. Requires write.",
   list_changes:
     "Lista el change_log (since, actor, limit). Requiere read. / List the change_log (since, actor, limit). Requires read.",
+  next_tasks:
+    "Próximas tareas abiertas (y snoozed vencidas), ordenadas por #apps, pay, priority. Incluye contexto de solicitudes. / Next open (and due-snoozed) tasks ordered by linked apps, pay, priority. Includes application context.",
+  list_tasks:
+    "Lista tareas con filtro status y/o application_id. / List tasks filtered by status and/or application_id.",
+  create_task:
+    "Crea una tarea vinculada a una o más solicitudes. Requiere write. / Create a task linked to one or more applications. Requires write. Fields: title, detail?, kind, application_ids[], priority?, due_date?.",
+  update_task:
+    "Actualiza campos de una tarea. Requiere write. / Update task fields. Requires write.",
+  complete_task:
+    "Marca tarea hecha (note opcional de Deisy). Requiere write. / Mark task done (optional Deisy note). Requires write.",
+  snooze_task:
+    "Posponer tarea (until ISO o days). Requiere write. / Snooze task (until ISO or days). Requires write.",
+  drop_task:
+    "Descarta una tarea. Requiere write. / Drop a task. Requires write.",
 } as const;
