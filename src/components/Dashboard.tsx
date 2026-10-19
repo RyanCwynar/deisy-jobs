@@ -120,6 +120,9 @@ export function Dashboard({ initial, userName }: Props) {
           <Link className="btn ghost" href="/todos">
             {t(lang, "todos")}
           </Link>
+          <Link className="btn ghost" href="/settings">
+            Account
+          </Link>
           {userName === "ryan" ? (
             <a className="btn ghost" href="/admin/tokens">
               Tokens

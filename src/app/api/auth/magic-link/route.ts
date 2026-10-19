@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Resend } from "resend";
 import { createMagicToken, findUserByEmail } from "@/lib/auth";
+import {
+  isMagicLinkConfigured,
+  resolveResendFrom,
+} from "@/lib/magic-link";
 import { resolvePublicOrigin } from "@/lib/public-origin";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +15,7 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  if (!process.env.RESEND_API_KEY) {
+  if (!isMagicLinkConfigured()) {
     return NextResponse.json(
       { error: "Magic link not configured" },
       { status: 503 }
@@ -41,8 +45,8 @@ export async function POST(req: NextRequest) {
     const base = resolvePublicOrigin(req);
     const link = `${base}/api/auth/magic-verify?token=${encodeURIComponent(token)}`;
 
-    const resend = new Resend(process.env.RESEND_API_KEY);
-    const from = process.env.RESEND_FROM ?? "deisy-jobs <onboarding@resend.dev>";
+    const resend = new Resend(process.env.RESEND_API_KEY!);
+    const from = resolveResendFrom();
     await resend.emails.send({
       from,
       to: user.email,

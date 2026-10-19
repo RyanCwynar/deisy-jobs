@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ensureSchema, getDb } from "@/lib/db";
+import { isMagicLinkConfigured } from "@/lib/magic-link";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export async function GET() {
       ok: true,
       service: "deisy-jobs",
       applications: count,
-      magic_link: Boolean(process.env.RESEND_API_KEY),
+      magic_link: isMagicLinkConfigured(),
       ts: new Date().toISOString(),
     });
   } catch (err) {

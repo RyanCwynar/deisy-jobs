@@ -214,6 +214,35 @@ export async function ensureSchema(db: Client = getDb()): Promise<Client> {
     `CREATE INDEX IF NOT EXISTS idx_task_applications_app ON task_applications(application_id)`
   );
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS webauthn_credentials (
+      id TEXT PRIMARY KEY,
+      user_email TEXT NOT NULL,
+      credential_id TEXT NOT NULL UNIQUE,
+      public_key TEXT NOT NULL,
+      counter INTEGER NOT NULL DEFAULT 0,
+      transports TEXT,
+      created_at TEXT NOT NULL,
+      last_used_at TEXT
+    )
+  `);
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS webauthn_challenges (
+      id TEXT PRIMARY KEY,
+      user_email TEXT,
+      challenge TEXT NOT NULL,
+      purpose TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_webauthn_creds_email ON webauthn_credentials(user_email)`
+  );
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_webauthn_challenges_expires ON webauthn_challenges(expires_at)`
+  );
+
   if (db === client) schemaReady = true;
   return db;
 }

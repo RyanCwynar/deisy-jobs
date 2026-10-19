@@ -2,6 +2,10 @@
 
 import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import {
+  browserSupportsWebAuthn,
+  startAuthentication,
+} from "@simplewebauthn/browser";
 
 function LoginForm() {
   const params = useSearchParams();
@@ -15,8 +19,10 @@ function LoginForm() {
   const [magicMsg, setMagicMsg] = useState<string | null>(null);
   const [magicEnabled, setMagicEnabled] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [passkeyOk, setPasskeyOk] = useState(false);
 
   useEffect(() => {
+    setPasskeyOk(browserSupportsWebAuthn());
     void fetch("/api/health")
       .then((r) => r.json())
       .then((d) => {
@@ -30,8 +36,13 @@ function LoginForm() {
     setBusy(true);
     setError(null);
     const fd = new FormData(e.currentTarget);
-    const email = String(fd.get("email") ?? "");
+    const email = String(fd.get("email") ?? "").trim();
     const password = String(fd.get("password") ?? "");
+    if (!email || !password) {
+      setError("Email and password required");
+      setBusy(false);
+      return;
+    }
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
@@ -75,6 +86,45 @@ function LoginForm() {
     }
   }
 
+  async function signInWithPasskey(form: HTMLFormElement) {
+    setBusy(true);
+    setError(null);
+    setMagicMsg(null);
+    const fd = new FormData(form);
+    const email = String(fd.get("email") ?? "").trim();
+    try {
+      const optRes = await fetch("/api/auth/webauthn/auth/options", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(email ? { email } : {}),
+      });
+      const options = await optRes.json();
+      if (!optRes.ok) {
+        setError(options.error ?? "Passkey sign-in unavailable");
+        return;
+      }
+
+      const authResp = await startAuthentication({ optionsJSON: options });
+      const verRes = await fetch("/api/auth/webauthn/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(authResp),
+      });
+      const ver = await verRes.json().catch(() => ({}));
+      if (!verRes.ok) {
+        setError(ver.error ?? "Passkey sign-in failed");
+        return;
+      }
+      window.location.href = params.get("next") || "/";
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Passkey sign-in cancelled"
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="login-page">
       <div className="login-card">
@@ -90,8 +140,7 @@ function LoginForm() {
             <input
               name="email"
               type="email"
-              autoComplete="username"
-              required
+              autoComplete="username webauthn"
             />
           </label>
           <label>
@@ -100,7 +149,6 @@ function LoginForm() {
               name="password"
               type="password"
               autoComplete="current-password"
-              required
             />
           </label>
           {error ? <p className="error">{error}</p> : null}
@@ -108,6 +156,21 @@ function LoginForm() {
           <button className="btn primary" type="submit" disabled={busy}>
             Log in
           </button>
+          {passkeyOk ? (
+            <button
+              className="btn ghost"
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                const form = document.getElementById(
+                  "login-form"
+                ) as HTMLFormElement | null;
+                if (form) void signInWithPasskey(form);
+              }}
+            >
+              Sign in with a passkey
+            </button>
+          ) : null}
           {magicEnabled ? (
             <button
               className="btn ghost"
